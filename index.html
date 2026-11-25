@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_top">
-<title>持久走ラボ</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="持久走記録">
+<meta name="theme-color" content="#13315c">
+<title>持久走記録</title>
 <style>
 :root{
   --bg:#f3f5f8; --card:#fff; --ink:#122033; --sub:#5d6b7c; --line:#e2e7ee; --soft:#eef2f7;
@@ -53,7 +57,7 @@ main{max-width:1100px;margin:0 auto;padding:18px 14px 80px}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .sp{flex:1}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600;color:var(--sub)}
-input[type=text],input[type=number],input[type=date],input[type=email],select,textarea{border:1px solid #cfd7e2;border-radius:9px;padding:8px 10px;background:#fff;min-width:0;width:100%}
+input[type=text],input[type=number],input[type=date],input[type=email],input[type=password],select,textarea{border:1px solid #cfd7e2;border-radius:9px;padding:8px 10px;background:#fff;min-width:0;width:100%}
 textarea{min-height:84px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:2px solid #9db8e6;border-color:#7d9fd8}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
@@ -158,20 +162,38 @@ details.rec .body{padding:14px}
 </style>
 </head>
 <body>
-<div id="demobar" hidden></div>
 <header class="top">
-  <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4" r="2"/><path d="M8 21l3-6 3 3v3M6 12l3-3 4 1 3 3 3 1M11 15l-2-4"/></svg></span><span id="appTitle">持久走ラボ</span></div>
+  <div class="brand"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="14" cy="4" r="2"/><path d="M8 21l3-6 3 3v3M6 12l3-3 4 1 3 3 3 1M11 15l-2-4"/></svg></span><span id="appTitle">持久走記録</span></div>
   <div id="who"></div>
 </header>
 <nav id="tabs"></nav>
 <main id="main"><div class="loading">読み込み中…</div></main>
-<div id="modal" hidden></div>
+<script>
+/* 読み込みが終わらないときの原因表示（本体のプログラムとは別に動く） */
+(function () {
+  var shown = false;
+  var tips = '<ul style="margin:8px 0 0;padding-left:1.2em;line-height:1.9">' +
+    '<li>ページを再読み込みしてみてください。</li>' +
+    '<li>プライベートブラウズ（シークレット）では使えません。通常の画面で開いてください。</li>' +
+    '<li>直らないときは、先生に画面を見せてください。</li></ul>';
+  window.__loadFail = function (msg) {
+    if (shown) return; var m = document.getElementById('main'); if (!m) return; shown = true;
+    m.innerHTML = '<div class="card" style="max-width:720px;margin:20px auto"><h2>読み込めませんでした</h2><p>' + msg + '</p>' + tips +
+      '<p style="margin-top:12px"><button class="btn" onclick="location.reload()">再読み込み</button></p></div>';
+  };
+  window.addEventListener('error', function (e) {
+    window.__loadFail('画面のプログラムでエラーが起きました：' + (e && e.message ? e.message : '') + (e && e.lineno ? '（' + e.lineno + '行目）' : ''));
+  });
+  window.__bootTimer = setTimeout(function () {
+    if (document.querySelector('#main .loading')) window.__loadFail('30秒たっても応答がありません。');
+  }, 30000);
+})();
+</script>
 <div id="toast"></div>
 
 <script>
 'use strict';
 /* ================= 基本ユーティリティ ================= */
-const IS_GAS = typeof google !== 'undefined' && google.script && google.script.run;
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -202,13 +224,10 @@ function corr(xs, ys) {
 }
 function linreg(xs, ys) { const mx = mean(xs), my = mean(ys); let sxy = 0, sxx = 0; xs.forEach((x, i) => { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) ** 2; }); const b = sxx ? sxy / sxx : 0; return { a: my - b * mx, b }; }
 function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'show' + (err ? ' err' : ''); clearTimeout(toast._t); toast._t = setTimeout(() => t.className = '', 2600); }
-function api(fn, ...args) {
-  if (IS_GAS) return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(e => rej(e))[fn](...args));
-  return new Promise((res, rej) => setTimeout(() => { try { res(JSON.parse(JSON.stringify(Mock[fn](...args)))); } catch (e) { rej(e); } }, 120));
-}
+function api(fn, ...args) { return new Promise((res, rej) => setTimeout(() => { try { res(JSON.parse(JSON.stringify(Store[fn](...args)))); } catch (e) { rej(e); } }, 0)); }
 const errMsg = e => (e && e.message) ? e.message : String(e);
 const sortRecs = rs => rs.slice().sort((a, b) => (a.date + a.created).localeCompare(b.date + b.created));
-const DIST = g => g === 'F' ? 1000 : 1500;
+const DIST = g => (S.boot && S.boot.settings && S.boot.settings.distM) ? (g === 'F' ? S.boot.settings.distF : S.boot.settings.distM) : (g === 'F' ? 1000 : 1500);
 const gk = x => String(x).replace(/^中/, '0').replace(/^高/, '1');
 const cmpJa = (a, b) => gk(a).localeCompare(gk(b), 'ja', { numeric: true });
 const stuKey = x => [x.grade, x.cls, x.no];
@@ -217,52 +236,31 @@ const cn = x => `${x.grade} ${x.cls}組${x.no}番`;
 const cls2 = k => { const [g, c] = k.split('-'); return `${g} ${c}組`; };
 const GL = g => g === 'F' ? '女子' : '男子';
 
-/* ================= 探究で使う要因 ================= */
-const STRATEGIES = ['前半から積極的に', '前半は抑えて後半上げる', '一定ペースを守る', '前の人について行く', '特に決めていない'];
-const FACTORS = [
-  { key: 'pacing', label: 'ペース配分（ラップから自動判定）', type: 'pace' },
-  { key: 'order', label: '練習の回数（くり返すと伸びるか）', unit: '回目', type: 'num' },
-  { key: 'other', label: 'その他（自分で決めた要因）', type: 'none' }
-];
-const OLD_F = { sleep: '前日の睡眠時間', breakfast: '朝食', condition: '体調', warmup: 'ウォームアップ', weekly: '自主練習量', strategy: '作戦', rpe: 'きつさ' };
-const SUMKEY = '__summary';
-const RECKEY = '__recsum';
-const realH = a => a.filter(h => !String(h.factor).startsWith('__'));
-const fLabel = k => (FACTORS.find(f => f.key === k) || { label: OLD_F[k] || k }).label;
-
 /* ================= 状態 ================= */
-const S = { boot: null, tab: null, sw: null, f: { grade: '', cls: '', gender: '' }, sort: { key: 'no', dir: 1 }, editHyp: null, aFactor: 'pacing', pick: { cls: '' } };
-const isT = () => S.boot && S.boot.teacher;
+const GRADES = ['中1', '中2', '中3', '高1', '高2', '高3'];
+const S = { boot: null, tab: null, sw: null, pick: { cls: '', friend: false }, openRec: null };
 const plan = g => (g === 'F' ? S.boot.settings.lapF : S.boot.settings.lapM);
 
-/* ================= 採点 ================= */
+/* ================= 新体力テストの得点（表示のみ） ================= */
 // 新体力テスト（12〜19歳）項目別得点表：持久走（スポーツ庁）。記録は秒未満切り上げで判定
 const OFFICIAL = { M: [[10, 299], [9, 316], [8, 333], [7, 355], [6, 382], [5, 410], [4, 450], [3, 499], [2, 560], [1, 1e9]], F: [[10, 229], [9, 242], [8, 259], [7, 277], [6, 296], [5, 318], [4, 342], [3, 374], [2, 417], [1, 1e9]] };
-function offScore(g, t) { if (t == null) return null; const sec = Math.ceil(t - 1e-9); for (const [p, lim] of OFFICIAL[g]) if (sec <= lim) return p; return 1; }
+const offOK = g => DIST(g) === (g === 'F' ? 1000 : 1500);
+function offScore(g, t) { if (t == null || !offOK(g)) return null; const sec = Math.ceil(t - 1e-9); for (const [p, lim] of OFFICIAL[g]) if (sec <= lim) return p; return 1; }
 function offNext(g, t) { const cur = offScore(g, t); if (cur == null || cur >= 10) return null; const row = OFFICIAL[g].find(r => r[0] === cur + 1); return { points: cur + 1, limit: row[1], need: Math.ceil(t - 1e-9) - row[1] }; }
-function scoreRows(g) { return S.boot.scoreTable.filter(r => r.gender === g).sort((a, b) => b.points - a.points); }
-function scoreFor(g, t) {
-  if (t == null) return null;
-  const rows = scoreRows(g); if (!rows.length) return null;
-  for (const r of rows.slice().sort((a, b) => a.limit - b.limit)) if (t <= r.limit + 1e-9) return r.points;
-  return Math.min(...rows.map(r => r.points));
-}
-function nextGoal(g, t) {
-  const cur = scoreFor(g, t); if (cur == null) return null;
-  const better = scoreRows(g).filter(r => r.points > cur).sort((a, b) => a.points - b.points)[0];
-  return better ? { points: better.points, limit: better.limit, need: t - better.limit } : null;
-}
-function basisTime(rs) { if (!rs.length) return null; return S.boot.settings.basis === 'latest' ? sortRecs(rs).slice(-1)[0].time : Math.min(...rs.map(r => r.time)); }
 
+/* ================= ペース分析・グラフ ================= */
 /* ================= ペース分析 ================= */
+const RD = (rec, g) => rec.distance || DIST(g);
 function lapDists(rec, g) {
-  const p = plan(g); const n = rec.laps.length;
-  if (n === p.length) return p;
-  return rec.laps.map(() => DIST(g) / n);
+  const n = rec.laps.length, D = RD(rec, g);
+  if (rec.lapDists && rec.lapDists.length === n) return rec.lapDists;
+  const p = buildLaps(D, S.boot.settings.lap); if (n === p.length) return p;
+  if (D === DIST(g) && plan(g).length === n) return plan(g);
+  return rec.laps.map(() => D / n);
 }
 function pacing(rec, g) {
   if (!rec.laps || rec.laps.length < 2) return null;
-  const d = lapDists(rec, g); const half = DIST(g) / 2;
+  const d = lapDists(rec, g); const half = RD(rec, g) / 2;
   let cd = 0, ct = 0, tHalf = null;
   for (let i = 0; i < rec.laps.length; i++) {
     if (cd + d[i] >= half) { tHalf = ct + rec.laps[i] * (half - cd) / d[i]; break; }
@@ -330,7 +328,7 @@ function bars(items, o = {}) {
 }
 function lapChart(rec, g) {
   const pc = pacing(rec, g); if (!pc) return '<div class="muted">ラップの記録がありません（最終タイムのみ）</div>';
-  const avg = rec.time / DIST(g) * 100;
+  const avg = rec.time / RD(rec, g) * 100;
   const items = pc.per100.map((v, i) => ({ label: (i + 1) + '周', value: v, vlabel: v.toFixed(1), color: v > avg * 1.03 ? '#f26a21' : v < avg * .97 ? '#1a9a6c' : '#13315c' }));
   return bars(items, { h: 200, min: Math.min(...pc.per100) * .85, fv: v => v.toFixed(0) }) + `<div class="muted">100mあたりの秒数（低いほど速い）／平均 ${avg.toFixed(1)}秒。緑＝平均より速い周、オレンジ＝遅い周</div>`;
 }
@@ -343,25 +341,28 @@ function rText(r) {
 /* ================= 起動 ================= */
 function boot() {
   $('#main').innerHTML = '<div class="loading">読み込み中…</div>';
-  api('getBootstrap').then(b => { S.boot = b; if (!S.tab || !tabsFor().some(t => t[0] === S.tab)) S.tab = tabsFor()[0][0]; render(); })
-    .catch(e => { $('#main').innerHTML = `<div class="card"><h2>読み込めませんでした</h2><p>${esc(errMsg(e))}</p><button class="btn" onclick="boot()">再読み込み</button></div>`; });
+  api('getBootstrap').then(b => {
+    clearTimeout(window.__bootTimer);
+    if (!b) throw new Error('サーバーから空の応答が返りました');
+    S.boot = b;
+    if (!S.tab || !tabsFor().some(t => t[0] === S.tab)) S.tab = tabsFor()[0][0];
+    render();
+  }).catch(e => { clearTimeout(window.__bootTimer); if (window.__loadFail) window.__loadFail(esc(errMsg(e))); else $('#main').innerHTML = `<div class="card"><h2>読み込めませんでした</h2><p>${esc(errMsg(e))}</p></div>`; });
 }
 function tabsFor() {
-  if (isT()) return [['tSum', '集計'], ['tRank', 'ランキング'], ['tAna', '分析'], ['tScore', '採点'], ['measure', '計測'], ['tSet', '設定']];
   if (!S.boot.profile) return [['reg', 'はじめに']];
-  return [['home', 'ホーム'], ['measure', '計測'], ['recs', '記録・振り返り'], ['inq', '探究ノート']];
+  return [['home', 'ホーム'], ['measure', '計測'], ['recs', '記録・振り返り'], ['me', '登録情報・バックアップ']];
 }
 function render() {
-  const b = S.boot;
-  $('#appTitle').textContent = b.settings.title || '持久走ラボ';
-  document.title = b.settings.title || '持久走ラボ';
-  $('#who').innerHTML = b.teacher ? `教員：${esc(b.email)}` : b.profile ? `${cn(b.profile)} ${esc(b.profile.name)}<br><span style="opacity:.8">${GL(b.profile.gender)} ${DIST(b.profile.gender)}m</span>` : esc(b.email);
+  const b = S.boot, title = b.settings.title || '持久走記録';
+  $('#appTitle').textContent = title; document.title = title;
+  $('#who').innerHTML = b.profile ? `${cn(b.profile)} ${esc(b.profile.name)}<br><span style="opacity:.8">${GL(b.profile.gender)} ${DIST(b.profile.gender)}m</span>` : '';
   $('#tabs').innerHTML = tabsFor().map(([k, l]) => `<button data-act="tab" data-k="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('');
-  const V = { tRank: vTRank, reg: vReg, home: vHome, measure: vMeasure, recs: vRecs, inq: vInq, tSum: vTSum, tAna: vTAna, tScore: vTScore, tSet: vTSet };
-  $('#main').innerHTML = (V[S.tab] || vHome)();
+  const V = { reg: vReg, home: vHome, measure: vMeasure, recs: vRecs, me: vMe };
+  $('#main').innerHTML = (V[S.tab] || V[tabsFor()[0][0]])();
   if (S.tab === 'measure') swPaint();
   fitPreview();
-  if (S.tab === 'recs' && S.openRec) { window.scrollTo(0, 0); const t = $('#rec-' + S.openRec + ' textarea'); if (t) t.setAttribute('autofocus', ''); }
+  if (S.tab === 'recs' && S.openRec) window.scrollTo(0, 0);
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
@@ -371,67 +372,86 @@ const ACT = {};
 const CHG = {};
 ACT.tab = d => { if (S.sw && S.sw.state === 'run' && !confirm('計測中です。画面を移動すると計測が止まります。よろしいですか？')) return; if (S.sw && S.sw.state === 'run') swReset(); S.tab = d.k; if (d.k !== 'recs') S.openRec = null; render(); window.scrollTo(0, 0); };
 
-/* ================= 生徒：はじめに ================= */
-function vReg() {
-  return `<div class="card" style="max-width:600px;margin:20px auto">
-  <h2>はじめに：プロフィール登録</h2>
-  <p class="muted" style="margin-top:0">最初の1回だけ入力します。性別で距離（男子1500m／女子1000m）と得点が決まります。<strong>あとから変更するには先生への連絡が必要</strong>なので、まちがえないように入力してください。</p>
-  <div class="fgrid" id="regf">
-    <label class="f">学年<select data-f="grade"><option value="">選んでください</option>${['中1', '中2', '中3', '高1', '高2', '高3'].map(g => `<option>${g}</option>`).join('')}</select></label>
-    <label class="f">組<input type="text" data-f="cls" placeholder="例：1 / A" maxlength="4"></label>
-    <label class="f">番号<input type="number" min="1" max="99" inputmode="numeric" data-f="no" placeholder="例：12"></label>
-    <label class="f">性別<select data-f="gender"><option value="">選んでください</option><option value="M">男子（1500m）</option><option value="F">女子（1000m）</option></select></label>
+/* ================= 登録（自分で入力） ================= */
+const normCls = s => String(s || '').replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/組$/, '').trim().toUpperCase();
+const normNo = s => Number(String(s || '').replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/番$/, '').trim());
+function profForm(p, first) {
+  p = p || {};
+  return `<div class="card" style="max-width:640px;margin:20px auto" id="pf">
+  <h2>${first ? 'はじめに：自分の情報を登録' : '登録情報の変更'}</h2>
+  <p class="muted" style="margin-top:0">${first ? '最初の1回だけ入力します。<strong>走る距離</strong>と<strong>1周の距離</strong>は先生の指示に合わせて選んでください（あとから変更できます）。' : 'クラス替えや入力ミス、走る距離・1周の距離が変わったときに変更できます。これまでの記録はそのまま残ります。'}</p>
+  <div class="fgrid">
+    <label class="f">学年<select data-f="grade"><option value="">選んでください</option>${GRADES.map(g => `<option ${g === p.grade ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+    <label class="f">組<input type="text" data-f="cls" value="${esc(p.cls || '')}" placeholder="例 1 や A" maxlength="5"></label>
+    <label class="f">番号<input type="number" data-f="no" value="${p.no || ''}" min="1" max="60" inputmode="numeric" placeholder="例 12"></label>
   </div>
-  <label class="f" style="margin-top:12px">氏名（姓と名の間にスペース）<input type="text" data-f="name" placeholder="例：桜丘 太郎" maxlength="30"></label>
-  <div class="row" style="margin-top:16px"><span class="sp"></span><button class="btn pri" data-act="reg">確認して登録</button></div></div>`;
+  <div class="fgrid" style="margin-top:12px">
+    <label class="f">氏名（姓と名の間にスペース）<input type="text" data-f="name" value="${esc(p.name || '')}" placeholder="例 桜丘 太郎" maxlength="30"></label>
+    <label class="f">性別<select data-f="gender"><option value="">選んでください</option><option value="M" ${p.gender === 'M' ? 'selected' : ''}>男子</option><option value="F" ${p.gender === 'F' ? 'selected' : ''}>女子</option></select></label>
+  </div>
+  ${courseFields()}
+  <div class="row" style="margin-top:16px"><span class="muted">記録はこのiPadの中だけに保存されます。</span><span class="sp"></span>${first ? '' : '<button class="btn" data-act="tab" data-k="home">やめる</button>'}<button class="btn ${first ? 'acc' : 'pri'}" data-act="profSave">${first ? '登録する' : '変更を保存'}</button></div></div>`;
 }
-ACT.reg = (d, b) => {
-  const p = {}; $$('#regf [data-f], .card [data-f="name"]').forEach(i => p[i.dataset.f] = i.value.trim());
-  p.cls = p.cls.replace(/組$/, '');
-  if (!p.grade) return toast('学年を選んでください', 1);
-  if (!p.cls) return toast('組を入力してください', 1);
-  if (!(Number(p.no) >= 1)) return toast('番号を入力してください', 1);
-  if (!p.gender) return toast('性別を選んでください', 1);
-  if (!p.name) return toast('氏名を入力してください', 1);
-  if (!confirm(`${p.grade} ${p.cls}組${p.no}番　${p.name}（${GL(p.gender)}）\nこの内容で登録します。よろしいですか？`)) return;
+function vReg() { return profForm(null, true); }
+function vMe() { return profForm(S.boot.profile, false) + backupCard(); }
+ACT.profSave = (d, b) => {
+  const f = {}; $$('#pf [data-f]').forEach(i => f[i.dataset.f] = i.value.trim());
+  f.cls = normCls(f.cls); f.no = normNo(f.no); f.name = f.name.replace(/[\s　]+/g, ' ');
+  if (!f.grade) return toast('学年を選んでください', 1);
+  if (!f.cls) return toast('組を入力してください', 1);
+  if (!(f.no >= 1 && f.no <= 60 && Number.isInteger(f.no))) return toast('番号は1〜60の数字で入力してください', 1);
+  if (!f.name) return toast('氏名を入力してください', 1);
+  if (!f.gender) return toast('性別を選んでください', 1);
+  const old = S.boot.profile;
+  f.dist = f.dist ? Math.round(Number(f.dist)) : 0; f.lap = Math.round(Number(f.lap));
+  if (f.dist && !(f.dist >= 200 && f.dist <= 10000)) return toast('走る距離は200〜10000mで入力してください', 1);
+  const D = f.dist || (f.gender === 'F' ? 1000 : 1500);
+  if (!(f.lap >= 50 && f.lap <= D)) return toast('1周の距離は50m〜走る距離の間で入力してください', 1);
+  if (buildLaps(D, f.lap).length > 40) return toast('周回が多すぎます（40周まで）。1周の距離を長くしてください', 1);
+
+  let msg = `${f.grade} ${f.cls}組${f.no}番 ${f.name}（${GL(f.gender)}）\n走る距離 ${D}m ／ 1周 ${f.lap}m（${buildLaps(D, f.lap).length}周）\nこの内容で${old ? '変更' : '登録'}しますか？`;
+  if (old && D !== DIST(old.gender) && S.boot.myRecords.length) msg += '\n\n※距離を変えると、ホームやA3シートには新しい距離の記録だけが表示されます（前の距離の記録は「記録・振り返り」の下に残ります）。';
+
+  if (!confirm(msg)) return;
   b.disabled = true;
-  api('registerProfile', p).then(bt => { S.boot = bt; S.tab = 'home'; render(); toast('登録しました'); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
+  api('saveProfile', f).then(bt => { S.boot = bt; S.tab = 'home'; render(); window.scrollTo(0, 0); toast(old ? '登録情報を変更しました' : '登録しました'); })
+    .catch(e => { b.disabled = false; toast(errMsg(e), 1); });
 };
 
-/* ================= 生徒：ホーム ================= */
-function myRecs() { return sortRecs(S.boot.myRecords.filter(r => r.time)); }
+/* ================= ホーム ================= */
+const curDist = r => !r.distance || r.distance === DIST(S.boot.profile.gender);
+function myRecs() { return sortRecs(S.boot.myRecords.filter(r => r.time && curDist(r))); }
+function otherRecs() { return sortRecs(S.boot.myRecords.filter(r => r.time && !curDist(r))).reverse(); }
 function vHome() {
   const p = S.boot.profile, g = p.gender, rs = myRecs();
-  if (!rs.length) return `<div class="card"><h2>ようこそ</h2>
-    <div class="step"><b>1</b><div><strong>仮説を立てる</strong>：「探究ノート」で、どうしたら記録が上がるか予想しよう</div></div>
-    <div class="step"><b>2</b><div><strong>ペアで計測</strong>：「計測」→「自分の記録を測ってもらう」を押して、iPadをペアに渡す</div></div>
-    <div class="step"><b>3</b><div><strong>振り返り</strong>：毎回の感想を書いて、ラップのグラフで仮説を確かめよう</div></div>
-    <div class="row" style="margin-top:14px"><button class="btn acc" data-act="tab" data-k="inq">仮説を立てる</button><button class="btn" data-act="tab" data-k="recs">手入力で記録する</button></div></div>`;
+  if (!rs.length) return homeNote() + (otherRecs().length ? `<div class="note" style="margin-bottom:14px">${DIST(g)}mの記録はまだありません。ほかの距離の記録（${otherRecs().length}件）は「記録・振り返り」の下で見られます。</div>` : '') + `<div class="card"><h2>ようこそ</h2>
+    <div class="step"><b>1</b><div><strong>ペアで計測</strong>：「計測」→「自分の記録を測ってもらう」を押して、iPadをペアに渡す</div></div>
+    <div class="step"><b>2</b><div><strong>振り返り</strong>：走ったら、その日の感想を書いておく</div></div>
+    <div class="step"><b>3</b><div><strong>まとめ</strong>：最後に総括を書いて「記録・振り返りシート（A3）」をPDFにする</div></div>
+    <div class="row" style="margin-top:14px"><button class="btn acc" data-act="tab" data-k="measure">計測をはじめる</button><button class="btn" data-act="tab" data-k="recs">手入力で記録する</button></div></div>`;
   const best = Math.min(...rs.map(r => r.time)), first = rs[0], last = rs[rs.length - 1];
-  const last2 = rs.length > 1 ? rs[rs.length - 2] : null, lastDiff = last2 ? rs[rs.length - 1].time - last2.time : null;
+  const last2 = rs.length > 1 ? rs[rs.length - 2] : null, lastDiff = last2 ? last.time - last2.time : null;
   const pend = rs.filter(r => !r.reflection).length;
-  const openH = realH(S.boot.myHypotheses).filter(h => !h.conclusion);
   const pts = rs.map(r => ({ label: md(r.date), y: r.time, hl: r.time === best }));
   const refs = [{ y: best, label: 'ベスト ' + fmt(best), color: '#1a9a6c' }];
   { const n = offNext(g, best); if (n) refs.push({ y: n.limit + .99, label: '体力テスト' + n.points + '点ライン ' + fmt(n.limit) }); }
-
   const gain = first.time - best;
-  return `
+  return homeNote() + `
   <div class="grid g4">
     <div class="kpi hero"><div class="lb">自己ベスト（${DIST(g)}m）</div><div class="v num">${fmt(best, 1)}</div><div class="s">${md(rs.find(r => r.time === best).date)} に記録</div></div>
-    <div class="kpi"><div class="lb">最新の記録</div><div class="v num">${fmt(rs[rs.length - 1].time, 1)}</div><div class="s">${md(rs[rs.length - 1].date)}${lastDiff != null ? `　前回より <strong style="color:${lastDiff < 0 ? 'var(--green)' : 'var(--orange)'}">${lastDiff < 0 ? '−' + Math.abs(lastDiff).toFixed(1) : '+' + lastDiff.toFixed(1)}秒</strong>` : ''}</div></div>
-    <div class="kpi"><div class="lb">体力テスト得点（持久走）</div><div class="v num">${offScore(g, best)}<span style="font-size:15px"> 点</span></div><div class="s">${(() => { const n = offNext(g, best); return n ? `${n.points}点（${fmt(n.limit)}以内）まで あと<strong style="color:var(--orange)">${n.need}秒</strong>` : '最高の10点！'; })()}</div></div>
+    <div class="kpi"><div class="lb">最新の記録</div><div class="v num">${fmt(last.time, 1)}</div><div class="s">${md(last.date)}${lastDiff != null ? `　前回より <strong style="color:${lastDiff < 0 ? 'var(--green)' : 'var(--orange)'}">${lastDiff < 0 ? '−' + Math.abs(lastDiff).toFixed(1) : '+' + lastDiff.toFixed(1)}秒</strong>` : ''}</div></div>
+    ${offOK(g) ? '' : `<div class="kpi"><div class="lb">走る距離・1周</div><div class="v num">${DIST(g)}<span style="font-size:15px"> m</span></div><div class="s">1周 ${S.boot.settings.lap}m ／ ${plan(g).length}周</div></div>`}${!offOK(g) ? '<!--' : ''}<div class="kpi"><div class="lb">体力テスト得点（持久走）</div><div class="v num">${offScore(g, best)}<span style="font-size:15px"> 点</span></div><div class="s">${(() => { const n = offNext(g, best); return n ? `${n.points}点（${fmt(n.limit)}以内）まで あと<strong style="color:var(--orange)">${n.need}秒</strong>` : '最高の10点！'; })()}</div></div>${!offOK(g) ? '-->' : ''}
     <div class="kpi"><div class="lb">初回からの伸び</div><div class="v num" style="color:${gain > 0 ? 'var(--green)' : 'inherit'}">${gain > 0 ? '−' + gain.toFixed(1) + '秒' : '±0'}</div><div class="s">記録 ${rs.length}回 ／ 初回 ${fmt(first.time)}</div></div>
   </div>
-  ${pend ? `<div class="note" style="margin:14px 0">振り返りが未記入の記録が <strong>${pend}件</strong> あります。今日の感想を書いておこう。 <button class="btn sm" data-act="tab" data-k="recs">入力する</button></div>` : ''}
+  ${pend ? `<div class="note" style="margin:14px 0">振り返りが未記入の記録が <strong>${pend}件</strong> あります。感想を書いておこう。 <button class="btn sm" data-act="tab" data-k="recs">入力する</button></div>` : ''}
   <div class="grid g2" style="margin-top:14px">
     <div class="card"><h2>記録の推移</h2>${lineChart(pts, { invert: true, refs })}</div>
     <div class="card"><h2>最新のラップ <span class="muted">${md(last.date)}</span> ${(() => { const pc = pacing(last, g); return pc ? `<span class="pill ${paceCls(pc.type)}">${pc.type}</span>` : ''; })()}</h2>${lapChart(last, g)}</div>
   </div>
-  <div class="card"><h2>いま検証中の仮説</h2>${openH.length ? openH.map(h => `<div class="note b" style="margin-bottom:8px"><span class="pill">${esc(fLabel(h.factor))}</span> ${esc(h.hypothesis)}</div>`).join('') : '<div class="muted">検証中の仮説はありません。</div>'}
-    <div class="row" style="margin-top:8px"><button class="btn" data-act="tab" data-k="inq">探究ノートを開く</button></div></div>`;
+  <div class="row"><button class="btn acc" data-act="tab" data-k="measure">計測する</button><button class="btn" data-act="tab" data-k="recs">記録・振り返りを見る</button></div>`;
 }
 
+/* ================= 計測（ペアでラップ） ================= */
 /* ================= 計測（ペアでラップ） ================= */
 function swReset() { if (S.sw && S.sw.raf) cancelAnimationFrame(S.sw.raf); relWake(); S.sw = { runner: S.sw ? S.sw.runner : null, state: 'idle', t0: 0, splits: [], partial: false }; }
 let wake = null;
@@ -443,33 +463,23 @@ function vMeasure() {
   if (!S.sw) swReset();
   const runners = S.boot.runners || [];
   const r = S.sw.runner;
-  const classes = [...new Set(runners.map(x => x.grade + '-' + x.cls))].sort(cmpJa);
-  if (!S.pick.cls) S.pick.cls = S.boot.profile ? S.boot.profile.grade + '-' + S.boot.profile.cls : (classes[0] || '');
-  const list = runners.filter(x => x.grade + '-' + x.cls === S.pick.cls && (isT() || x.email !== S.boot.email)).sort((a, b) => a.no - b.no);
+  const classes = [...new Set(runners.filter(x => x.email !== S.boot.email).map(x => x.grade + '-' + x.cls))].sort(cmpJa);
+  if (!S.pick.cls || !classes.includes(S.pick.cls)) { const mc = S.boot.profile.grade + '-' + S.boot.profile.cls; S.pick.cls = classes.includes(mc) ? mc : (classes[0] || ''); }
+  const list = runners.filter(x => x.grade + '-' + x.cls === S.pick.cls && x.email !== S.boot.email).sort((a, b) => a.no - b.no);
   const mine = S.boot.profile && S.boot.runners.find(x => x.email === S.boot.email);
-  if (!r && !isT() && !S.pick.friend) {
+  if (!r && !S.pick.friend) {
     return `<div class="card"><h2>計測をはじめる</h2>
       <button class="btn acc" style="width:100%;padding:22px;font-size:20px;border-radius:16px;margin-top:6px" data-act="pickRunner" data-e="${esc(S.boot.email)}">自分の記録を測ってもらう</button>
       <p class="muted" style="margin:6px 4px 0">走る前にこのiPadをペアに渡してください。ペアが周ごとにタップします。記録はあなたのデータとして保存されます。</p>
       <hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
       <button class="btn" style="width:100%;padding:16px;font-size:16px;border-radius:14px" data-act="friendMode">iPadを忘れた友達の記録を測る</button>
-      <p class="muted" style="margin:6px 4px 0">あなたのiPadで友達の記録を測って、友達のデータとして保存します。友達は後で自分のiPadから振り返りを入力できます。</p></div>
+      <p class="muted" style="margin:6px 4px 0">あなたのiPadで友達の記録を測ります。測った記録は、あとでAirDropなどで友達のiPadに送れます。</p></div>
     <div class="card"><h2>計測のしかた（ペアの人へ）</h2>
       <div class="step"><b>1</b><div>スタートの合図で <strong>スタート</strong> をタップ</div></div>
       <div class="step"><b>2</b><div>走る人が決められた地点を通るたびに <strong>ラップ</strong> をタップ</div></div>
       <div class="step"><b>3</b><div>最後の周は <strong>ゴール</strong>。押し間違えたら「1つ戻す」</div></div></div>`;
   }
-  if (!r) {
-    return `<div class="card"><div class="row"><h2 style="margin:0">${isT() ? 'だれの記録を測りますか？' : 'iPadを忘れた友達の記録を測る'}</h2><span class="sp"></span>${isT() ? '' : '<button class="btn sm" data-act="friendBack">戻る</button>'}</div>
-      <p class="muted">走る友達を選んでください。記録は<strong>選んだ人のデータ</strong>として保存されます（計測者としてあなたの名前も残ります）。</p>
-      <div class="row" style="margin-bottom:10px"><label class="f" style="min-width:160px">クラス<select data-act-change="pickCls">${classes.map(c => `<option value="${c}" ${c === S.pick.cls ? 'selected' : ''}>${cls2(c)}</option>`).join('')}</select></label></div>
-      ${list.length ? `<div class="runners">${list.map(x => `<button data-act="pickRunner" data-e="${esc(x.email)}"><strong>${x.no}</strong> ${esc(x.name)}<br><span class="muted">${GL(x.gender)} ${DIST(x.gender)}m</span></button>`).join('')}</div>` : '<div class="empty">このクラスの登録者がいません</div>'}
-    </div>
-    <div class="card"><h2>計測のしかた</h2>
-      <div class="step"><b>1</b><div>スタートの合図で <strong>スタート</strong> をタップ</div></div>
-      <div class="step"><b>2</b><div>走る人が決められた地点を通るたびに <strong>ラップ</strong> をタップ</div></div>
-      <div class="step"><b>3</b><div>最後の周は <strong>ゴール</strong>。押し間違えたら「1つ戻す」</div></div></div>`;
-  }
+  if (!r) return vFriend();
   const g = r.gender, p = plan(g), sw = S.sw;
   const n = sw.splits.length;
   const chips = p.map((dd, i) => `<span class="chip ${i < n ? 'done' : (i === n && sw.state === 'run') ? 'now' : ''}">${i + 1}周 ${dd}m</span>`).join('');
@@ -477,7 +487,7 @@ function vMeasure() {
   if (sw.state === 'idle') btn = `<button class="tap start" data-act="swTap">スタート</button>`;
   else if (sw.state === 'run') btn = n < p.length - 1 ? `<button class="tap lap" data-act="swTap">${n + 1}周目 ラップ</button>` : `<button class="tap goal" data-act="swTap">ゴール</button>`;
   return `<div class="card sw">
-    ${r.email === S.boot.email ? '<div class="note g" style="text-align:left;margin-bottom:10px">あなたの記録を測っています。<strong>ペアの人がタップしてください。</strong></div>' : (!isT() ? `<div class="note" style="text-align:left;margin-bottom:10px"><strong>${esc(r.name)}さん</strong>の記録として保存されます（iPadを忘れた友達の代わりに計測）</div>` : '')}
+    ${r.email === S.boot.email ? '<div class="note g" style="text-align:left;margin-bottom:10px">あなたの記録を測っています。<strong>ペアの人がタップしてください。</strong></div>' : `<div class="note" style="text-align:left;margin-bottom:10px"><strong>${esc(r.name)}さん</strong>の記録として保存されます（あとで友達のiPadに送れます）</div>`}
     <div class="row"><div style="text-align:left"><div class="muted">走る人</div><div style="font-weight:800;font-size:18px">${cn(r)} ${esc(r.name)}</div><div class="muted">${GL(g)} ${DIST(g)}m</div></div><span class="sp"></span>
       ${sw.state === 'idle' ? '<button class="btn sm" data-act="changeRunner">走る人を変える</button>' : ''}</div>
     <div class="chips" style="margin-top:12px">${chips}</div>
@@ -535,11 +545,10 @@ ACT.swSave = (d, b) => {
   if (laps.length) laps[laps.length - 1] = r1(time - laps.slice(0, -1).reduce((a, b) => a + b, 0));
   if (time < 60) return toast('タイムが短すぎます（60秒未満）。計測し直してください', 1);
   b.disabled = true;
-  api('saveRecord', { runner: sw.runner.email, time, laps, date: $('#swDate').value || today(), method: 'ペア計測' }).then(rec => {
-    if (rec.email === S.boot.email) S.boot.myRecords.push(rec);
-    if (S.boot.all) S.boot.all.records.push(rec);
+  api('saveRecord', { runner: sw.runner.email === S.boot.email ? S.boot.email : sw.runner, time, laps, date: $('#swDate').value || today(), method: sw.runner.email === S.boot.email ? 'ペア計測' : '代理計測' }).then(rec => {
+    if (rec.email === S.boot.email) S.boot.myRecords.push(rec); else S.boot.held.push(rec);
     const self = rec.email === S.boot.email;
-    toast(self ? `記録 ${fmt(time, 1)} を保存しました。今日の感想を書こう` : `${sw.runner.name}さんの記録 ${fmt(time, 1)} を保存しました`);
+    toast(self ? `記録 ${fmt(time, 1)} を保存しました。今日の感想を書こう` : `${sw.runner.name}さんの記録 ${fmt(time, 1)} を保存しました。「記録・振り返り」から送れます`);
     S.sw.runner = null; S.pick.friend = false; swReset();
     if (self) { S.openRec = rec.id; S.tab = 'recs'; }
     render();
@@ -552,7 +561,8 @@ document.addEventListener('change', e => {
   else if (CHG[k]) CHG[k](t);
 });
 
-/* ================= 生徒：記録・振り返り ================= */
+
+/* ================= 記録・振り返り ================= */
 function vRecs() {
   const g = S.boot.profile.gender, all = myRecs().reverse();
   const best = all.length ? Math.min(...all.map(r => r.time)) : null;
@@ -566,11 +576,11 @@ function vRecs() {
     const pb = prevBest != null && just.time < prevBest;
     const off = offScore(g, just.time), nx = offNext(g, just.time);
     hero = `<div class="card" style="border:3px solid var(--green);background:linear-gradient(180deg,#f2fbf7,#fff 140px)">
-      <div class="row"><div style="font-size:20px;font-weight:800">計測おつかれさま！</div>${pb ? '<span class="pill g" style="font-size:14px">自己ベスト更新！</span>' : ''}</div>
+      <div class="row"><div style="font-size:20px;font-weight:800">${just.method === '手入力' ? '記録を追加しました' : '計測おつかれさま！'}</div>${pb ? '<span class="pill g" style="font-size:14px">自己ベスト更新！</span>' : ''}</div>
       <div class="row" style="margin:8px 0 4px;align-items:flex-end;gap:18px">
-        <div><div class="muted">今日の記録（${md(just.date)}）</div><div class="num" style="font-size:44px;font-weight:800;line-height:1.1">${fmt(just.time, 1)}</div></div>
+        <div><div class="muted">記録（${md(just.date)}）</div><div class="num" style="font-size:44px;font-weight:800;line-height:1.1">${fmt(just.time, 1)}</div></div>
         ${prev ? `<div><div class="muted">前回</div><div class="num" style="font-size:20px;font-weight:700">${fmt(prev.time, 1)} <span style="color:${just.time < prev.time ? 'var(--green)' : 'var(--orange)'}">${just.time < prev.time ? '−' : '+'}${Math.abs(just.time - prev.time).toFixed(1)}秒</span></div></div>` : ''}
-        <div><div class="muted">体力テスト</div><div class="num" style="font-size:20px;font-weight:700">${off}点</div></div>
+        ${off != null ? `<div><div class="muted">体力テスト</div><div class="num" style="font-size:20px;font-weight:700">${off}点</div></div>` : ''}
         ${nx ? `<div class="muted" style="padding-bottom:4px">${nx.points}点まで あと<strong style="color:var(--orange)">${nx.need}秒</strong></div>` : ''}
       </div>
       <p class="muted" style="margin:6px 0 0">ラップを見て、<strong>今日の感想</strong>を書いて保存しよう。毎回の感想は最後に「記録・振り返りシート（A3）」にまとまります。</p>
@@ -578,33 +588,35 @@ function vRecs() {
     <div class="row" style="margin:-2px 0 18px"><span class="sp"></span><button class="btn sm" data-act="later">あとで書く</button></div>
     <h3 style="margin:6px 2px 10px">これまでの記録</h3>`;
   }
-  return hero + `<div class="card"><div class="row"><h2 style="margin:0">記録・振り返り</h2><span class="sp"></span><button class="btn sm" data-act="manualOpen">＋ 手入力で追加</button></div>
-    <p class="muted" style="margin:8px 0 0">記録を開いて、振り返り（感想）を毎回入力しよう。ラップは「探究ノート」の検証グラフに、振り返りは一番下の「記録・振り返りシート（A3）」にまとまります。</p>
+  return hero + `<div class="card"><div class="row"><h2 style="margin:0">記録・振り返り</h2><span class="sp"></span><button class="btn sm" data-act="importOpen">友達から届いた記録を読み込む</button><button class="btn sm" data-act="manualOpen">＋ 手入力で追加</button></div>
+    <p class="muted" style="margin:8px 0 0">記録を開いて、振り返り（感想）を毎回入力しよう。振り返りは一番下の「記録・振り返りシート（A3）」にまとまります。</p>
     <div id="manual"></div>
     <div class="row" style="margin-top:10px;gap:6px"><span class="pill o">① 計測</span>→<span class="pill">② 毎回、感想を書く</span>→<span class="muted">くり返す</span>→<span class="pill g">③ 最後に総括</span>→<span class="pill">④ A3シート完成</span><span class="sp"></span><button class="btn sm" data-act="toRecSum">総括・A3シートへ ↓</button></div>
-</div>
-    ${rs.length ? rs.map(r => recCard(r, g, best, true)).join('') : '<div class="empty">まだ記録がありません</div>'}
+  </div>
+    ${rs.length ? rs.map(r => recCard(r, g, best, true)).join('') : (just ? '' : '<div class="empty">まだ記録がありません</div>')}
+    ${(() => { const o = otherRecs(); if (!o.length) return ''; return `<details class="card" style="padding:14px 18px"><summary style="cursor:pointer;font-weight:700">ほかの距離の記録（${o.length}件）</summary><p class="muted">いまの設定（${DIST(g)}m）とちがう距離の記録です。ホームのグラフやA3シートには入りません。</p>${o.map(r => recCard(r, g, Math.min(...o.filter(x => x.distance === r.distance).map(x => x.time)), true)).join('')}</details>`; })()}
+    ${heldCard()}
     <div class="card noprint" id="recSumSec" style="border:2px solid var(--navy);margin-top:20px"><div class="row"><h2 style="margin:0">記録・振り返りシート（A3横・1枚）</h2><span class="sp"></span><button class="btn acc" data-act="pdfRec">PDFをダウンロード</button></div>
-      <p class="muted" style="margin:6px 0 10px">毎回の記録と感想が自動でたまっていきます。全部の計測が終わったら、最後に<strong>総括</strong>を書いて保存し、PDFにして提出しよう。</p>
-      <label class="f">総括（記録の変化・毎回の感想をふり返って、持久走を通して成長したこと・これからの課題）<textarea id="recSum" style="min-height:110px" placeholder="例：最初は1周目で飛ばして後半に失速していたが、毎回の感想で反省を書き続けたことで、一定ペースで走れるようになり45秒縮めることができた。今後の課題は…">${esc(recSumOf(S.boot.myHypotheses).text)}</textarea></label>
+      <p class="muted" style="margin:6px 0 10px">毎回の記録と感想が自動でたまっていきます。全部の計測が終わったら、最後に<strong>総括</strong>を書いて保存し、PDFにしよう。</p>
+      <label class="f">総括（記録の変化・毎回の感想をふり返って、持久走を通して成長したこと・これからの課題）<textarea id="recSum" style="min-height:110px" maxlength="2000" placeholder="例：最初は1周目で飛ばして後半に失速していたが、毎回の感想で反省を書き続けたことで、一定ペースで走れるようになり45秒縮めることができた。今後の課題は…">${esc(S.boot.profile.summary || '')}</textarea></label>
       <div class="row" style="margin-top:8px"><span class="sp"></span><button class="btn pri" data-act="recSumSave">総括を保存</button></div></div>
-    <div class="pv">${sheetRecHTML(S.boot.profile, S.boot.myRecords, recSumOf(S.boot.myHypotheses).text)}</div>`;
+    <div class="pv">${sheetRecHTML(S.boot.profile, myRecs(), S.boot.profile.summary || '')}</div>`;
 }
 function recCard(r, g, best, editable, forceOpen) {
-  const pc = pacing(r, g), sc = isT() ? scoreFor(g, r.time) : null;
+  const pc = pacing(r, g);
   const v = (x) => x == null ? '' : x;
   const _segs = (f, n, cur) => `<div class="seg" data-seg="${f}">${Array.from({ length: n }, (_, i) => `<button type="button" data-act="seg" data-v="${i + 1}" class="${cur === i + 1 ? 'on' : ''}">${i + 1}</button>`).join('')}</div>`;
   const form = editable ? `<div id="rf-${r.id}">
     <h3>振り返り・感想</h3>
-    <textarea data-f="reflection" placeholder="今日の感想：走ってみてどうだった？ ラップを見て気づいたことは？ 仮説と比べてどうだった？ 次に試したいことは？">${esc(r.reflection)}</textarea>
-    <div class="row" style="margin-top:10px">${isToday(r.created) ? `<button class="btn sm dang" data-act="delRec" data-id="${r.id}">削除</button>` : ''}<span class="sp"></span><button class="btn pri" data-act="saveRec" data-id="${r.id}">保存</button></div>
+    <textarea data-f="reflection" placeholder="今日の感想：走ってみてどうだった？ ラップを見て気づいたことは？ 次に試したいことは？">${esc(r.reflection)}</textarea>
+    <div class="row" style="margin-top:10px"><button class="btn sm dang" data-act="delRec" data-id="${r.id}">削除</button><span class="sp"></span><button class="btn pri" data-act="saveRec" data-id="${r.id}">保存</button></div>
   </div>` : recFacts(r);
   return `<details class="rec" id="rec-${r.id}" ${forceOpen ? 'open style="border:2px solid var(--green)"' : ''}><summary>
     <span class="muted" style="min-width:48px">${md(r.date)}</span><span class="big num">${fmt(r.time, 1)}</span>
-    ${r.time === best ? '<span class="pill g">ベスト</span>' : ''}<span class="pill" title="新体力テストの得点">体力テスト${offScore(g, r.time)}点</span>${sc != null ? `<span class="pill o">学校${sc}点</span>` : ''}${pc ? `<span class="pill ${paceCls(pc.type)}">${pc.type}</span>` : ''}
+    ${r.time === best ? '<span class="pill g">ベスト</span>' : ''}${r.distance && r.distance !== DIST(g) ? `<span class="pill o">${r.distance}m</span>` : offScore(g, r.time) != null ? `<span class="pill" title="新体力テストの得点">体力テスト${offScore(g, r.time)}点</span>` : ''}${pc ? `<span class="pill ${paceCls(pc.type)}">${pc.type}</span>` : ''}
     <span class="sp"></span>${r.reflection ? '<span class="muted">振り返り済</span>' : '<span class="pill o">振り返り未記入</span>'}
   </summary><div class="body">
-    <div class="grid g2"><div>${lapChart(r, g)}</div><div>${lapTable(r, g)}<div class="muted" style="margin-top:6px">${esc(r.method)}${r.recorder && r.recorder !== r.email ? '（計測：' + esc(r.recorder.split('@')[0]) + '）' : ''}</div></div></div>
+    <div class="grid g2"><div>${lapChart(r, g)}</div><div>${lapTable(r, g)}<div class="muted" style="margin-top:6px">${esc(r.method)}${r.recorder && r.recorder !== r.email ? '（計測：' + esc(r.recorderName || r.recorder.split('@')[0]) + 'さん）' : ''}</div></div></div>
     ${form}
   </div></details>`;
 }
@@ -641,8 +653,7 @@ ACT.delRec = (d) => {
   if (!confirm('この記録を削除しますか？')) return;
   api('deleteRecord', d.id).then(() => {
     S.boot.myRecords = S.boot.myRecords.filter(x => x.id !== d.id);
-    if (S.boot.all) S.boot.all.records = S.boot.all.records.filter(x => x.id !== d.id);
-    toast('削除しました'); closeModal(true); render();
+    toast('削除しました'); render();
   }).catch(e => toast(errMsg(e), 1));
 };
 ACT.manualOpen = () => {
@@ -650,7 +661,7 @@ ACT.manualOpen = () => {
   $('#manual').innerHTML = `<div class="card" style="background:var(--soft);margin:12px 0 0">
     <div class="fgrid"><label class="f">実施日<input type="date" id="mDate" value="${today()}"></label><label class="f">タイム（分:秒）<input type="text" id="mTime" placeholder="例 6:12.4" inputmode="decimal"></label></div>
     <label class="f" style="margin-top:10px">ラップ（任意・${p.length}周：${p.join('m, ')}m）<input type="text" id="mLaps" placeholder="例 68.2, 95.1, 97.4, 91.7（秒・カンマ区切り）"></label>
-    <div class="muted" style="margin-top:6px">手入力の記録は「手入力」として先生に表示されます。</div>
+    <div class="muted" style="margin-top:6px">ストップウォッチなど、アプリ以外で測った記録を入れるときに使います。記録には「手入力」と表示されます。</div>
     <div class="row" style="margin-top:10px"><span class="sp"></span><button class="btn" data-act="manualClose">やめる</button><button class="btn pri" data-act="manualSave">追加</button></div></div>`;
 };
 ACT.manualClose = () => { $('#manual').innerHTML = ''; };
@@ -662,141 +673,13 @@ ACT.manualSave = (d, b) => {
     S.boot.myRecords.push(rec); S.openRec = rec.id; toast('追加しました'); render();
   }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
 };
-
-/* ================= 生徒：探究ノート ================= */
-function factorValue(r, key, g, idx) {
-  if (key === 'pacing') { const p = pacing(r, g); return p ? p.ratio : null; }
-  if (key === 'order') return idx + 1;
-  return r[key];
-}
-function analyzeFactor(rs, key, g) {
-  const f = FACTORS.find(x => x.key === key);
-  const all = sortRecs(rs);
-  const data = all.map((r, i) => ({ r, v: factorValue(r, key, g, i) })).filter(x => x.v != null && x.v !== '');
-  const caution = data.length < 4 ? `<div class="note" style="margin-top:8px">まだデータが <strong>${data.length}回分</strong> です。4回以上たまると、傾向が読み取りやすくなります。</div>` : '';
-  if (!f || f.type === 'none') return '';
-  if (f.type === 'num' || f.type === 'pace') {
-    const pts = data.map(x => ({ x: x.v, y: x.r.time, label: md(x.r.date) }));
-    const r = corr(pts.map(p => p.x), pts.map(p => p.y));
-    let msg = '';
-    if (r != null) {
-      const dir = r < 0 ? `<strong>${f.type === 'pace' ? '後半の比率' : f.label}が大きいほどタイムが短い（速い）</strong>` : `<strong>${f.type === 'pace' ? '後半の比率' : f.label}が大きいほどタイムが長い（遅い）</strong>`;
-      msg = `相関係数 r = <strong class="num">${r.toFixed(2)}</strong>（${rText(r)}）。${Math.abs(r) >= .2 ? dir + ' 傾向があります。' : 'はっきりした傾向は見えません。'}`;
-    }
-    const xl = f.type === 'pace' ? '後半÷前半の時間（1.00＝イーブン、大きいほど後半に落ちた）' : f.label + (f.unit ? '（' + f.unit + '）' : '');
-    return scatter(pts, { invert: true, xLabel: xl, fx: f.type === 'pace' ? (v => v.toFixed(2)) : (v => r1(v)) }) +
-      `<div class="note b" style="margin-top:8px">${msg || '計算にはデータが3回分以上必要です。'}${key !== 'order' ? '<br><span class="muted">※回数を重ねるだけでも速くなることがあります。「練習の回数」の影響とも比べてみよう。</span>' : ''}</div>` + caution;
-  }
-  const groups = {};
-  data.forEach(x => { const k = f.type === 'bool' ? (x.v ? '食べた' : '食べていない') : x.v; (groups[k] = groups[k] || []).push(x.r.time); });
-  const items = Object.entries(groups).map(([k, a]) => ({ label: k.length > 8 ? k.slice(0, 8) + '…' : k, value: mean(a), vlabel: fmt(mean(a)) + `（${a.length}回）` }));
-  return bars(items, { fv: v => fmt(v), min: Math.min(...items.map(i => i.value)) * .95, L: 50 }) + `<div class="note b" style="margin-top:8px">グループごとの平均タイムです（低いほど速い）。回数が少ないグループは偶然の影響が大きいので注意しよう。</div>` + caution;
-}
-function vInq() {
-  const g = S.boot.profile.gender, hs = realH(S.boot.myHypotheses).slice().reverse(), rs = myRecs();
-  const ed = S.editHyp;
-  const form = ed ? `<div class="card" id="hypf" style="border:2px solid var(--orange)"><h2>${ed.id ? '仮説を編集' : '新しい仮説を立てる'}</h2>
-    <label class="f">どの要因に注目する？<select data-f="factor">${FACTORS.map(f => `<option value="${f.key}" ${ed.factor === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}</select></label>
-    <label class="f" style="margin-top:10px">仮説（もし〜なら、記録は〜になるだろう）<textarea data-f="hypothesis" placeholder="例：もし前半の1周目を抑えて一定ペースで走れば、後半に失速せず記録が速くなるだろう">${esc(ed.hypothesis || '')}</textarea></label>
-    <label class="f" style="margin-top:10px">そう考えた理由<textarea data-f="reason" placeholder="例：1回目は1周目で飛ばして、3周目に大きくペースが落ちたから">${esc(ed.reason || '')}</textarea></label>
-    <label class="f" style="margin-top:10px">どうやって確かめる？<textarea data-f="method" placeholder="例：毎回ラップを測り、後半÷前半の比とタイムの関係をグラフで見る。次の2回は1周目を抑えてみる">${esc(ed.method || '')}</textarea></label>
-    <div class="row" style="margin-top:12px">${ed.id ? `<button class="btn sm dang" data-act="delHyp" data-id="${ed.id}">削除</button>` : ''}<span class="sp"></span><button class="btn" data-act="hypCancel">やめる</button><button class="btn pri" data-act="hypSave">保存</button></div></div>` : '';
-  return `<div class="card"><div class="row"><h2 style="margin:0">探究ノート</h2><span class="sp"></span>${ed ? '' : '<button class="btn acc" data-act="hypNew">＋ 仮説を立てる</button>'}</div>
-    <div class="row" style="margin-top:10px;gap:6px"><span class="pill o">① 仮説</span>→<span class="pill">② 計測（ラップ）・感想</span>→<span class="pill">③ グラフで検証</span>→<span class="pill g">④ 結論・考察</span>→<span class="muted">次の仮説へ</span><span class="sp"></span><button class="btn sm" data-act="toSum">最終まとめ（A3・PDF）へ ↓</button></div></div>
-    ${form}
-    ${hs.length ? hs.map(h => hypCard(h, rs, g)).join('') : (ed ? '' : '<div class="empty">まだ仮説がありません。「どうしたら記録が上がるか」を予想してみよう。<br><span class="muted">例：ペース配分／練習の回数／その他、自分で決めた要因</span></div>')}
-    <div class="card"><h2>自由に分析してみる</h2><div class="row"><label class="f" style="min-width:260px">要因<select data-act-change="freeFactor">${FACTORS.map(f => `<option value="${f.key}" ${S.aFactor === f.key ? 'selected' : ''}>${f.label}</option>`).join('')}</select></label></div><div id="freeA" style="margin-top:10px">${analyzeFactor(rs, S.aFactor, g)}</div></div>
-    <div id="sumSec">${vSum()}</div>`;
-}
-function hypCard(h, rs, g) {
-  const concl = ['仮説は正しそう', '一部は正しそう', '仮説とはちがった', 'まだ分からない'];
-  return `<div class="card"><div class="row"><span class="pill">${esc(fLabel(h.factor))}</span>${h.conclusion ? `<span class="pill ${h.conclusion === '仮説は正しそう' ? 'g' : h.conclusion === '仮説とはちがった' ? 'r' : 'o'}">${esc(h.conclusion)}</span>` : '<span class="pill o">検証中</span>'}<span class="muted">${esc(h.created.slice(0, 10))}</span><span class="sp"></span><button class="btn sm" data-act="hypEdit" data-id="${h.id}">編集</button></div>
-    <p style="font-size:16px;font-weight:700;margin:10px 0 4px">${esc(h.hypothesis) || '（仮説未記入）'}</p>
-    ${h.reason ? `<div class="muted">理由：${esc(h.reason)}</div>` : ''}${h.method ? `<div class="muted">確かめ方：${esc(h.method)}</div>` : ''}
-    <h3>データで検証</h3>${analyzeFactor(rs, h.factor, g)}
-    <div id="hc-${h.id}"><h3>結論と考察</h3>
-      <div class="row">${concl.map(c => `<label style="display:flex;gap:4px;align-items:center;font-size:14px"><input type="radio" name="c-${h.id}" value="${c}" ${h.conclusion === c ? 'checked' : ''}>${c}</label>`).join('')}</div>
-      <textarea style="margin-top:8px" data-f="discussion" placeholder="グラフから何が言える？ 他に影響していそうな要因は？ 次はどんな仮説を試す？">${esc(h.discussion)}</textarea>
-      <div class="row" style="margin-top:8px"><span class="sp"></span><button class="btn pri sm" data-act="hypConc" data-id="${h.id}">結論を保存</button></div></div></div>`;
-}
-CHG.freeFactor = t => { S.aFactor = t.value; $('#freeA').innerHTML = analyzeFactor(myRecs(), S.aFactor, S.boot.profile.gender); };
-ACT.hypNew = () => { S.editHyp = { factor: 'pacing' }; render(); };
-ACT.hypEdit = d => { S.editHyp = Object.assign({}, S.boot.myHypotheses.find(h => h.id === d.id)); render(); window.scrollTo(0, 0); };
-ACT.hypCancel = () => { S.editHyp = null; render(); };
-function putHyp(h) { const i = S.boot.myHypotheses.findIndex(x => x.id === h.id); if (i >= 0) S.boot.myHypotheses[i] = h; else S.boot.myHypotheses.push(h); }
-ACT.hypSave = (d, b) => {
-  const f = Object.assign({}, S.editHyp); $$('#hypf [data-f]').forEach(i => f[i.dataset.f] = i.value);
-  if (!f.hypothesis.trim()) return toast('仮説を書いてください', 1);
+ACT.recSumSave = (d, b) => {
   b.disabled = true;
-  api('saveHypothesis', f).then(h => { putHyp(h); S.editHyp = null; toast('保存しました'); render(); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
+  api('saveSummary', $('#recSum').value).then(t => { S.boot.profile.summary = t; S.openRec = null; toast('総括を保存しました'); render(); setTimeout(() => ACT.toRecSum(), 60); })
+    .catch(e => { b.disabled = false; toast(errMsg(e), 1); });
 };
-ACT.hypConc = (d, b) => {
-  const h = Object.assign({}, S.boot.myHypotheses.find(x => x.id === d.id));
-  const c = $(`input[name="c-${d.id}"]:checked`); h.conclusion = c ? c.value : ''; h.discussion = $(`#hc-${d.id} [data-f="discussion"]`).value;
-  b.disabled = true;
-  api('saveHypothesis', h).then(x => { putHyp(x); toast('結論を保存しました'); render(); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
-};
-ACT.delHyp = d => { if (!confirm('この仮説を削除しますか？')) return; api('deleteHypothesis', d.id).then(() => { S.boot.myHypotheses = S.boot.myHypotheses.filter(h => h.id !== d.id); S.editHyp = null; render(); }).catch(e => toast(errMsg(e), 1)); };
 
-
-/* ================= 最終まとめ（A3横・1枚） ================= */
-function miniFactor(rs, key, g) {
-  const f = FACTORS.find(x => x.key === key); if (!f) return { chart: '', text: '' };
-  const all = sortRecs(rs);
-  const data = all.map((r, i) => ({ r, v: factorValue(r, key, g, i) })).filter(x => x.v != null && x.v !== '');
-  if (f.type === 'num' || f.type === 'pace') {
-    const pts = data.map(x => ({ x: x.v, y: x.r.time }));
-    const r = corr(pts.map(p => p.x), pts.map(p => p.y));
-    return { chart: scatter(pts, { invert: true, h: 190, fx: f.type === 'pace' ? (v => v.toFixed(2)) : (v => r1(v)), xLabel: f.type === 'pace' ? '後半÷前半' : f.label }),
-      text: r == null ? `データ ${data.length}回` : `データ ${data.length}回 ／ 相関 r = ${r.toFixed(2)}（${rText(r)}${Math.abs(r) >= .2 ? (r < 0 ? '・大きいほど速い' : '・大きいほど遅い') : ''}）` };
-  }
-  const groups = {};
-  data.forEach(x => { const k = f.type === 'bool' ? (x.v ? '食べた' : '食べていない') : x.v; (groups[k] = groups[k] || []).push(x.r.time); });
-  const items = Object.entries(groups).map(([k, a]) => ({ label: k.length > 7 ? k.slice(0, 7) + '…' : k, value: mean(a), vlabel: fmt(mean(a)) + '（' + a.length + '）' }));
-  return { chart: items.length ? bars(items, { h: 190, fv: v => fmt(v), min: Math.min(...items.map(i => i.value)) * .95, L: 50 }) : '', text: `グループ別の平均タイム（データ ${data.length}回）` };
-}
-function sheetHTML(p, recs, hyps, sm) {
-  const g = p.gender, rs = sortRecs(recs.filter(r => r.time));
-  const H = realH(hyps).slice().sort((a, b) => (b.conclusion ? 1 : 0) - (a.conclusion ? 1 : 0) || b.created.localeCompare(a.created)).slice(0, 3);
-  const best = rs.length ? Math.min(...rs.map(r => r.time)) : null;
-  const bestRec = rs.find(r => r.time === best);
-  const gain = rs.length ? rs[0].time - best : null;
-  const period = rs.length ? md(rs[0].date) + '〜' + md(rs[rs.length - 1].date) : '—';
-  const pcs = {}; rs.forEach(r => { const pc = pacing(r, g); if (pc) pcs[pc.type] = (pcs[pc.type] || 0) + 1; });
-  const lapRec = rs.slice().reverse().find(r => r.time === best && r.laps.length) || rs.slice().reverse().find(r => pacing(r, g));
-  const refl = rs.filter(r => r.reflection).slice(-3).reverse();
-  const conclCls = c => c === '仮説は正しそう' ? 'g' : c === '仮説とはちがった' ? 'r' : 'o';
-  return `<div class="sheet">
-  <div class="hd"><div><h1>持久走 探究レポート</h1><div class="meta">${cn(p)}　<strong style="font-size:20px;color:#122033">${esc(p.name)}</strong>　｜　${GL(g)} ${DIST(g)}m　｜　期間 ${period}（${rs.length}回）</div></div></div>
-  <div class="cols">
-    <div class="col">
-      <h2><span>1</span>記録の成果</h2>
-      <div class="kp"><div><small>初回</small><b class="num">${rs.length ? fmt(rs[0].time, 1) : '—'}</b></div><div><small>自己ベスト</small><b class="num" style="color:#1a9a6c">${fmt(best, 1)}</b></div><div><small>最新</small><b class="num">${rs.length ? fmt(rs[rs.length - 1].time, 1) : '—'}</b></div>
-        <div><small>初回からの伸び</small><b class="num" style="color:#1a9a6c">${gain ? '−' + gain.toFixed(1) + '秒' : '±0'}</b></div><div><small>伸び率</small><b class="num">${gain ? (gain / rs[0].time * 100).toFixed(1) + '%' : '—'}</b></div><div><small>ベストの日</small><b class="num">${bestRec ? md(bestRec.date) : '—'}</b></div></div>
-      <div>${lineChart(rs.map(r => ({ label: md(r.date), y: r.time, hl: r.time === best })), { invert: true, h: 230 })}</div>
-      <table><tr><th>日付</th><th>タイム</th><th>ペース配分</th><th>ラップ（秒）</th></tr>
-      ${rs.slice(-9).map(r => { const pc = pacing(r, g); return `<tr><td>${md(r.date)}</td><td class="num"><strong>${fmt(r.time, 1)}</strong></td><td>${pc ? pc.type : '—'}</td><td style="font-size:12px">${r.laps.length ? r.laps.map(l => l.toFixed(1)).join(' / ') : '—'}</td></tr>`; }).join('')}</table>
-    </div>
-    <div class="col">
-      <h2><span>2</span>探究のプロセス（仮説 → 検証 → 結論）</h2>
-      ${H.length ? H.map(h => { const a = miniFactor(rs, h.factor, g); return `<div class="hy" style="flex:1">
-        <div style="display:flex;gap:6px;align-items:center"><span class="pill">${esc(fLabel(h.factor))}</span>${h.conclusion ? `<span class="pill ${conclCls(h.conclusion)}">${esc(h.conclusion)}</span>` : '<span class="pill o">検証中</span>'}</div>
-        <div class="q">仮説：${esc(h.hypothesis)}</div>
-        ${h.reason ? `<div class="s">理由：${esc(h.reason)}</div>` : ''}
-        <div style="display:grid;grid-template-columns:1.1fr 1fr;gap:10px;align-items:start;margin-top:2px"><div>${a.chart}<div style="font-size:12px;color:#5d6b7c">${a.text}</div></div>
-        <div class="d" style="-webkit-line-clamp:7">${h.discussion ? '<strong>考察：</strong>' + esc(h.discussion) : '<span style="color:#8a96a5">考察は未記入</span>'}</div></div></div>`; }).join('') : '<div class="box lg" style="color:#8a96a5">仮説がまだありません</div>'}
-    </div>
-    <div class="col">
-      <h2><span>3</span>ペース配分</h2>
-      <div>${lapRec ? lapChart(lapRec, g).replace(/<div class="muted">.*<\/div>$/s, '') + `<div style="font-size:12px;color:#5d6b7c">${md(lapRec.date)}（${fmt(lapRec.time, 1)}）の100mあたりの秒数</div>` : '<div style="color:#8a96a5">ラップの記録なし</div>'}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(pcs).map(([k, v]) => `<span class="pill ${paceCls(k)}">${k} ${v}回</span>`).join('') || ''}</div>
-      <h2><span>4</span>まとめ</h2>
-      <div class="box lg"><div class="lb">持久走の探究で分かったこと</div>${esc(sm.learned) || '<span style="color:#8a96a5">未記入</span>'}</div>
-      <div class="box lg"><div class="lb">これからの生活・運動に活かすこと</div>${esc(sm.next) || '<span style="color:#8a96a5">未記入</span>'}</div>
-      ${refl.length ? `<div class="box" style="font-size:13px"><div class="lb">振り返りから</div>${refl.map(r => `・${md(r.date)} ${esc(r.reflection.length > 48 ? r.reflection.slice(0, 48) + '…' : r.reflection)}`).join('\n')}</div>` : ''}
-    </div>
-  </div></div>`;
-}
+/* ================= 記録・振り返りシート（A3横・1枚） ================= */
 function sheetRecHTML(p, recs, sumText) {
   const g = p.gender, rs = sortRecs(recs.filter(r => r.time));
   const best = rs.length ? Math.min(...rs.map(r => r.time)) : null;
@@ -811,7 +694,7 @@ function sheetRecHTML(p, recs, sumText) {
       <h2><span>1</span>記録のまとめ</h2>
       <div class="kp" style="grid-template-columns:repeat(2,1fr)"><div><small>初回</small><b class="num">${rs.length ? fmt(rs[0].time, 1) : '—'}</b></div><div><small>自己ベスト</small><b class="num" style="color:#1a9a6c">${fmt(best, 1)}</b></div>
         <div><small>最新</small><b class="num">${rs.length ? fmt(rs[rs.length - 1].time, 1) : '—'}</b></div><div><small>初回からの伸び</small><b class="num" style="color:#1a9a6c">${gain ? '−' + gain.toFixed(1) + '秒' : '±0'}</b></div>
-        <div style="grid-column:span 2"><small>体力テスト得点（自己ベスト・持久走）</small><b class="num">${best != null ? offScore(g, best) + '<span style="font-size:14px"> 点</span>' : '—'}</b></div></div>
+        <div style="grid-column:span 2">${offOK(g) ? `<small>体力テスト得点（自己ベスト・持久走）</small><b class="num">${best != null ? offScore(g, best) + '<span style="font-size:14px"> 点</span>' : '—'}</b>` : `<small>走る距離・1周の距離</small><b class="num">${DIST(g)}m</b> <span style="font-size:13px">／ 1周 ${S.boot.settings.lap}m</span>`}</div></div>
       <div>${lineChart(rs.map(r => ({ label: md(r.date), y: r.time, hl: r.time === best })), { invert: true, h: 230 })}</div>
       <h2><span>2</span>ペース配分</h2>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${Object.entries(pcs).map(([k, v]) => `<span class="pill ${paceCls(k)}">${k} ${v}回</span>`).join('') || '<span style="color:#8a96a5">ラップの記録なし</span>'}</div>
@@ -830,29 +713,8 @@ function sheetRecHTML(p, recs, sumText) {
     </div>
   </div></div>`;
 }
-function recSumOf(hyps) { const h = hyps.find(x => x.factor === RECKEY); return h ? { id: h.id, text: h.hypothesis } : { text: '' }; }
-function summaryOf(hyps) { const h = hyps.find(x => x.factor === SUMKEY); return h ? { id: h.id, learned: h.hypothesis, next: h.discussion } : { learned: '', next: '' }; }
-function vSum() {
-  const p = S.boot.profile, sm = summaryOf(S.boot.myHypotheses);
-  return `<div class="card noprint" style="border:2px solid var(--navy)"><div class="row"><h2 style="margin:0">最終まとめ（A3横・1枚）</h2><span class="sp"></span><button class="btn acc" data-act="pdfA3">PDFをダウンロード</button></div>
-    <p class="muted" style="margin:6px 0 10px">記録・探究ノート・振り返りが自動でA3横1枚にまとまります。最後に下の2つを書いて保存してから、PDFにしよう。</p>
-    <div class="grid g2" id="smf">
-      <label class="f">持久走の探究で分かったこと<textarea data-f="learned" placeholder="例：前半を抑えるペース配分にしてから記録が安定して伸びた。">${esc(sm.learned)}</textarea></label>
-      <label class="f">これからの生活・運動に活かすこと<textarea data-f="next" placeholder="例：部活の長距離練習でも、最初の1周を抑えて一定ペースを意識する。">${esc(sm.next)}</textarea></label></div>
-    <div class="row" style="margin-top:10px"><span class="sp"></span><button class="btn pri" data-act="smSave">まとめを保存</button></div></div>
-  <div class="pv">${sheetHTML(p, S.boot.myRecords, S.boot.myHypotheses, sm)}</div>`;
-}
 function fitPreview() { $$('.pv').forEach(pv => { const sh = $('.sheet', pv); if (sh) sh.style.transform = `scale(${pv.clientWidth / 1587})`; }); }
 window.addEventListener('resize', fitPreview);
-ACT.toSum = () => { const e = $('#sumSec'); if (e) e.scrollIntoView({ behavior: 'smooth' }); };
-ACT.smSave = (d, b) => {
-  const sm = summaryOf(S.boot.myHypotheses); const f = {}; $$('#smf [data-f]').forEach(i => f[i.dataset.f] = i.value);
-  b.disabled = true;
-  api('saveHypothesis', { id: sm.id, factor: SUMKEY, hypothesis: f.learned, discussion: f.next, reason: '', method: '', conclusion: '' })
-    .then(h => { putHyp(h); toast('まとめを保存しました'); render(); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
-};
-function curSheet() { return sheetHTML(S.boot.profile, S.boot.myRecords, S.boot.myHypotheses, summaryOf(S.boot.myHypotheses)); }
-function fileName(p) { return `持久走まとめ_${p.grade}-${p.cls}-${p.no}_${p.name.replace(/\s/g, '')}.pdf`; }
 function printSheet(html) {
   let pa = $('#printArea'); if (!pa) { pa = document.createElement('div'); pa.id = 'printArea'; document.body.appendChild(pa); }
   pa.innerHTML = html; document.body.classList.add('print-a3');
@@ -864,8 +726,10 @@ const loadJS = src => new Promise((res, rej) => { const s = document.createEleme
 async function makePdf(html, name, btn) {
   if (btn) { btn.disabled = true; btn._t = btn.textContent; btn.textContent = 'PDFを作成中…'; }
   try {
-    if (!window.html2canvas) await loadJS('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
-    if (!window.jspdf) await loadJS('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+    // Apps Script は HTML 内のスラッシュ2つを誤ってコメント扱いすることがあるため、URL を分けて組み立てる
+    const CDN = ['https:', '', 'cdnjs.cloudflare.com', 'ajax', 'libs'].join('/');
+    if (!window.html2canvas) await loadJS(CDN + '/html2canvas/1.4.1/html2canvas.min.js');
+    if (!window.jspdf) await loadJS(CDN + '/jspdf/2.5.1/jspdf.umd.min.js');
     let host = $('#pdfHost'); if (!host) { host = document.createElement('div'); host.id = 'pdfHost'; document.body.appendChild(host); }
     host.innerHTML = html;
     const canvas = await window.html2canvas($('.sheet', host), { scale: 2, backgroundColor: '#ffffff', width: 1587, height: 1123, windowWidth: 1700, onclone: doc => { const h = doc.getElementById('pdfHost'); if (h) h.querySelectorAll('.sheet').forEach(e => e.style.transform = 'none'); } });
@@ -879,350 +743,232 @@ async function makePdf(html, name, btn) {
     printSheet(html);
   } finally { if (btn) { btn.disabled = false; btn.textContent = btn._t; } }
 }
-ACT.pdfA3 = (d, b) => makePdf(curSheet(), fileName(S.boot.profile), b);
-ACT.printA3 = () => printSheet(curSheet());
 const recFile = p => `持久走記録_${p.grade}-${p.cls}-${p.no}_${p.name.replace(/\s/g, '')}.pdf`;
-const mySheetRec = () => sheetRecHTML(S.boot.profile, S.boot.myRecords, recSumOf(S.boot.myHypotheses).text);
+const mySheetRec = () => sheetRecHTML(S.boot.profile, myRecs(), S.boot.profile.summary || '');
 ACT.pdfRec = (d, b) => makePdf(mySheetRec(), recFile(S.boot.profile), b);
 ACT.printRec = () => printSheet(mySheetRec());
 ACT.toRecSum = () => { const e = $('#recSumSec'); if (e) e.scrollIntoView({ behavior: 'smooth' }); };
-ACT.recSumSave = (d, b) => {
-  const cur = recSumOf(S.boot.myHypotheses); b.disabled = true;
-  api('saveHypothesis', { id: cur.id, factor: RECKEY, hypothesis: $('#recSum').value, reason: '', method: '', conclusion: '', discussion: '' })
-    .then(h => { putHyp(h); S.openRec = null; toast('総括を保存しました'); render(); setTimeout(() => ACT.toRecSum(), 60); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
-};
-ACT.tRecPdf = (d, b) => { const A = S.boot.all, p = A.roster.find(x => x.email === d.e); makePdf(sheetRecHTML(p, A.records.filter(r => r.email === d.e), recSumOf(A.hypotheses.filter(h => h.email === d.e)).text), recFile(p), b); };
-ACT.tPdf = (d, b) => {
-  const A = S.boot.all, p = A.roster.find(x => x.email === d.e);
-  const hy = A.hypotheses.filter(h => h.email === d.e);
-  makePdf(sheetHTML(p, A.records.filter(r => r.email === d.e), hy, summaryOf(hy)), fileName(p), b);
-};
 
-/* ================= 教員：共通 ================= */
-function students() {
-  const A = S.boot.all, f = S.f;
-  return A.roster.filter(s => (!f.grade || String(s.grade) === f.grade) && (!f.cls || String(s.cls) === f.cls) && (!f.gender || s.gender === f.gender));
+/* ================= 距離と1周の距離 ================= */
+const DIST_OPTS = [800, 1000, 1200, 1500, 2000, 3000];
+const LAP_OPTS = [100, 150, 200, 250, 300, 400];
+const DEF_DIST = g => g === 'F' ? 1000 : 1500;
+// 例：1500m・1周400m → 300,400,400,400（端数の周を最初に）
+function buildLaps(dist, lap) {
+  dist = Number(dist); lap = Number(lap);
+  if (!(dist > 0) || !(lap > 0) || lap >= dist) return [dist];
+  const n = Math.floor(dist / lap), rem = dist - n * lap;
+  return (rem > 0 ? [rem] : []).concat(Array(n).fill(lap));
 }
-function summarize(s) {
-  const A = S.boot.all;
-  const rs = sortRecs(A.records.filter(r => r.email === s.email && r.time));
-  const hs = realH(A.hypotheses.filter(h => h.email === s.email));
-  const o = { s, rs, n: rs.length, hyp: hs.length, hypDone: hs.filter(h => h.conclusion).length };
-  if (rs.length) {
-    o.first = rs[0].time; o.best = Math.min(...rs.map(r => r.time)); o.latest = rs[rs.length - 1].time;
-    o.gain = o.first - o.best; o.gainPct = o.gain / o.first * 100;
-    o.score = scoreFor(s.gender, basisTime(rs)); o.off = offScore(s.gender, o.best);
-    o.refl = rs.filter(r => r.reflection).length / rs.length;
-    const pc = pacing(rs[rs.length - 1], s.gender); o.pace = pc ? pc.type : '';
-  }
-  return o;
+function selOrNum(name, opts, cur, unit, blank) {
+  const custom = cur !== '' && !opts.includes(Number(cur));
+  return `<div class="row" style="gap:6px;flex-wrap:nowrap"><select data-sel="${name}" data-act-change="selNum" style="flex:1">${blank ? `<option value="" ${cur === '' ? 'selected' : ''}>${blank}</option>` : ''}${opts.map(o => `<option value="${o}" ${!custom && o === Number(cur) ? 'selected' : ''}>${o}${unit}</option>`).join('')}<option value="other" ${custom ? 'selected' : ''}>その他（入力）</option></select>
+    <input type="number" data-f="${name}" value="${cur}" min="50" max="10000" inputmode="numeric" style="width:110px;${custom ? '' : 'display:none'}"></div>`;
 }
-function filterBar() {
-  const R = S.boot.all.roster; const f = S.f;
-  const grades = [...new Set(R.map(r => r.grade))].sort(cmpJa); const clss = [...new Set(R.filter(r => !f.grade || String(r.grade) === f.grade).map(r => r.cls))].sort(cmpJa);
-  return `<div class="row noprint">
-    <label class="f">学年<select data-act-change="fl" data-k="grade"><option value="">すべて</option>${grades.map(g => `<option ${String(g) === f.grade ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
-    <label class="f">組<select data-act-change="fl" data-k="cls"><option value="">すべて</option>${clss.map(c => `<option ${String(c) === f.cls ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
-    <label class="f">性別<select data-act-change="fl" data-k="gender"><option value="">すべて</option><option value="M" ${f.gender === 'M' ? 'selected' : ''}>男子</option><option value="F" ${f.gender === 'F' ? 'selected' : ''}>女子</option></select></label></div>`;
-}
-CHG.fl = t => { S.f[t.dataset.k] = t.value; if (t.dataset.k === 'grade') S.f.cls = ''; render(); };
-
-/* ================= 教員：集計 ================= */
-function vTSum() {
-  const list = students().map(summarize);
-  const k = S.sort.key, dir = S.sort.dir;
-  const val = o => ({ no: o.s, name: o.s.name, gender: o.s.gender, n: o.n, first: o.first ?? 1e9, best: o.best ?? 1e9, latest: o.latest ?? 1e9, gain: o.gain ?? -1e9, score: o.score ?? -1, off: o.off ?? -1, refl: o.refl ?? -1, hyp: o.hyp })[k];
-  list.sort((a, b) => { const x = val(a), y = val(b); return (k === 'no' ? cmpStu(x, y) : typeof x === 'string' ? x.localeCompare(y, 'ja') : x - y) * dir; });
-  const done = list.filter(o => o.n);
-  const th = (key, l, cls = '') => `<th class="${cls}" data-act="sort" data-k="${key}">${l}${S.sort.key === key ? (S.sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`;
-  const avg = (g) => { const a = done.filter(o => o.s.gender === g).map(o => o.best); return a.length ? fmt(mean(a)) : '—'; };
-  return `<div class="card"><div class="row"><h2 style="margin:0">記録の集計</h2><span class="sp"></span><button class="btn sm" data-act="csv">成績CSVを出力</button><button class="btn sm" data-act="reload">最新に更新</button></div>
-    <div style="margin-top:10px">${filterBar()}</div></div>
-    <div class="grid g4">
-      <div class="kpi"><div class="lb">対象の生徒</div><div class="v num">${list.length}<span style="font-size:14px"> 人</span></div><div class="s">記録あり ${done.length}人</div></div>
-      <div class="kpi"><div class="lb">平均ベスト（男子1500m）</div><div class="v num">${avg('M')}</div></div>
-      <div class="kpi"><div class="lb">平均ベスト（女子1000m）</div><div class="v num">${avg('F')}</div></div>
-      <div class="kpi"><div class="lb">振り返り記入率</div><div class="v num">${done.length ? Math.round(mean(done.map(o => o.refl)) * 100) : 0}<span style="font-size:14px"> %</span></div><div class="s">仮説を立てた生徒 ${list.filter(o => o.hyp).length}人</div></div>
-    </div>
-    <div class="card" style="margin-top:14px"><div class="tw"><table class="t">
-      <tr>${th('no', '組・番号')}${th('name', '氏名')}${th('gender', '性別')}${th('n', '回数', 'r')}${th('first', '初回', 'r')}${th('best', 'ベスト', 'r')}${th('latest', '最新', 'r')}${th('gain', '伸び', 'r')}${th('off', '体力テスト', 'r')}${th('score', '学校得点', 'r')}<th>最新のペース</th>${th('refl', '振り返り', 'r')}${th('hyp', '仮説', 'r')}</tr>
-      ${list.map(o => `<tr class="click" data-act="stu" data-e="${esc(o.s.email)}"><td>${o.s.grade}-${o.s.cls}-${o.s.no}</td><td>${esc(o.s.name)}</td><td>${GL(o.s.gender)}</td><td class="r">${o.n}</td>
-        <td class="r num">${fmt(o.first)}</td><td class="r num"><strong>${fmt(o.best)}</strong></td><td class="r num">${fmt(o.latest)}</td>
-        <td class="r num" style="color:${o.gain > 0 ? 'var(--green)' : 'inherit'}">${o.n ? (o.gain > 0 ? '−' + o.gain.toFixed(1) : '0') : '—'}</td>
-        <td class="r">${o.off ?? '—'}</td><td class="r"><strong>${o.score ?? '—'}</strong></td><td>${o.pace ? `<span class="pill ${paceCls(o.pace)}">${o.pace}</span>` : ''}</td>
-        <td class="r">${o.n ? Math.round(o.refl * 100) + '%' : '—'}</td><td class="r">${o.hyp ? o.hypDone + '/' + o.hyp : '—'}</td></tr>`).join('')}
-    </table></div><div class="muted" style="margin-top:6px">行をクリックすると、生徒ごとの記録・ラップ・探究ノートを確認できます。伸び＝初回−ベスト（秒）。</div></div>`;
-}
-ACT.sort = d => { if (S.sort.key === d.k) S.sort.dir *= -1; else S.sort = { key: d.k, dir: ['gain', 'score', 'off', 'n', 'refl', 'hyp'].includes(d.k) ? -1 : 1 }; render(); };
-ACT.reload = () => boot();
-ACT.csv = () => {
-  const list = students().map(summarize).sort((a, b) => cmpStu(a.s, b.s));
-  const dates = [...new Set(list.flatMap(o => o.rs.map(r => r.date)))].sort();
-  const head = ['学年', '組', '番号', '氏名', '性別', '距離', '回数', '初回', 'ベスト', '最新', '伸び(秒)', '体力テスト得点', '学校得点', '振り返り率', '仮説数', ...dates.map(d => d + ' タイム')];
-  const rows = list.map(o => [o.s.grade, o.s.cls, o.s.no, o.s.name, GL(o.s.gender), DIST(o.s.gender), o.n, fmt(o.first, 1), fmt(o.best, 1), fmt(o.latest, 1), o.n ? o.gain.toFixed(1) : '', o.off ?? '', o.score ?? '', o.n ? Math.round(o.refl * 100) + '%' : '', o.hyp,
-    ...dates.map(d => { const a = o.rs.filter(r => r.date === d); return a.length ? fmt(Math.min(...a.map(r => r.time)), 1) : ''; })]);
-  const csv = '﻿' + [head, ...rows].map(r => r.map(c => { c = String(c ?? ''); return /[",\n]/.test(c) ? '"' + c.replace(/"/g, '""') + '"' : c; }).join(',')).join('\r\n');
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = '持久走_成績_' + today() + '.csv'; document.body.appendChild(a); a.click(); a.remove();
-};
-
-/* ================= 教員：生徒の詳細 ================= */
-ACT.stu = d => openStudent(d.e);
-function openStudent(email) {
-  const s = S.boot.all.roster.find(x => x.email === email); const o = summarize(s);
-  const hs = realH(S.boot.all.hypotheses.filter(h => h.email === email)).slice().reverse();
-  const g = s.gender;
-  const box = `<div class="box"><div class="row"><div><div class="muted">${cn(s)} ・ ${GL(g)} ${DIST(g)}m</div><div style="font-size:20px;font-weight:800">${esc(s.name)}</div></div><span class="sp"></span><button class="btn" data-act="tRecPdf" data-e="${esc(email)}">記録シートPDF</button><button class="btn" data-act="tPdf" data-e="${esc(email)}">探究まとめPDF</button><button class="btn" data-act="closeModal">閉じる</button></div>
-    <div class="grid g4" style="margin-top:12px">
-      <div class="kpi"><div class="lb">ベスト</div><div class="v num">${fmt(o.best, 1)}</div></div>
-      <div class="kpi"><div class="lb">体力テスト ／ 学校得点</div><div class="v num">${o.off ?? '—'}<span style="font-size:14px">点 ／ ${o.score ?? '—'}点</span></div></div>
-      <div class="kpi"><div class="lb">伸び</div><div class="v num">${o.n ? '−' + o.gain.toFixed(1) + '秒' : '—'}</div></div>
-      <div class="kpi"><div class="lb">回数 ／ 振り返り</div><div class="v num">${o.n}<span style="font-size:14px">回 ／ ${o.n ? Math.round(o.refl * 100) : 0}%</span></div></div></div>
-    ${o.n ? `<div class="card" style="margin-top:14px"><h2>記録の推移</h2>${lineChart(o.rs.map(r => ({ label: md(r.date), y: r.time, hl: r.time === o.best })), { invert: true, h: 220 })}</div>` : ''}
-    <div class="card"><h2>探究ノート</h2>${hs.length ? hs.map(h => `<div style="border-top:1px solid var(--line);padding:10px 0"><div class="row"><span class="pill">${esc(fLabel(h.factor))}</span>${h.conclusion ? `<span class="pill g">${esc(h.conclusion)}</span>` : '<span class="pill o">検証中</span>'}</div>
-      <div style="font-weight:700;margin-top:6px">${esc(h.hypothesis)}</div>${h.reason ? `<div class="muted">理由：${esc(h.reason)}</div>` : ''}${h.method ? `<div class="muted">確かめ方：${esc(h.method)}</div>` : ''}${h.discussion ? `<div style="margin-top:4px;white-space:pre-wrap">考察：${esc(h.discussion)}</div>` : ''}</div>`).join('') : '<div class="muted">仮説はまだありません</div>'}</div>
-    <h3>記録（新しい順）</h3>
-    ${o.rs.slice().reverse().map(r => recCard(r, g, o.best, false).replace('</div></details>', `<div class="row" style="margin-top:12px"><span class="sp"></span><button class="btn sm dang" data-act="delRec" data-id="${r.id}">記録削除</button></div></div></details>`)).join('') || '<div class="empty">記録なし</div>'}
-  </div>`;
-  const m = $('#modal'); m.innerHTML = box; m.hidden = false; m.dataset.e = email; m.scrollTop = 0;
-}
-function closeModal(reopen) { const m = $('#modal'); const e = m.dataset.e; m.hidden = true; m.innerHTML = ''; if (reopen && e && S.boot.all) { /* 削除後は閉じる */ } }
-ACT.closeModal = () => closeModal();
-$('#modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
-
-
-/* ================= 教員：ランキング ================= */
-function vTRank() {
-  const R = S.boot.all.roster;
-  const grades = [...new Set(R.map(r => r.grade))].sort(cmpJa);
-  const scopes = [];
-  if (grades.some(g => g.startsWith('中'))) scopes.push('中学全体');
-  if (grades.some(g => g.startsWith('高'))) scopes.push('高校全体');
-  scopes.push(...grades);
-  const rk = S.rk || (S.rk = { scope: scopes.includes('高校全体') ? '高校全体' : scopes[0], kind: 'best', n: 10 });
-  if (!scopes.includes(rk.scope)) rk.scope = scopes[0];
-  const inScope = s => rk.scope === '中学全体' ? s.grade.startsWith('中') : rk.scope === '高校全体' ? s.grade.startsWith('高') : s.grade === rk.scope;
-  const all = R.filter(inScope).map(summarize).filter(o => o.n);
-  const K = { best: { l: '自己ベスト', v: o => o.best, asc: true, f: o => fmt(o.best, 1) }, gain: { l: '伸び率', v: o => o.gainPct, asc: false, f: o => '−' + o.gainPct.toFixed(1) + '%' }, latest: { l: '最新の記録', v: o => o.latest, asc: true, f: o => fmt(o.latest, 1) } }[rk.kind];
-  const table = g => {
-    const list = all.filter(o => o.s.gender === g).sort((a, b) => K.asc ? K.v(a) - K.v(b) : K.v(b) - K.v(a));
-    let rank = 0, prev = null;
-    const rows = list.slice(0, rk.n === 0 ? list.length : rk.n).map((o, i) => { const v = K.v(o); if (v !== prev) rank = i + 1; prev = v;
-      const medal = rank === 1 ? '#d4a017' : rank === 2 ? '#9aa4ae' : rank === 3 ? '#c07a43' : '';
-      return `<tr class="click" data-act="stu" data-e="${esc(o.s.email)}"><td style="width:46px"><span style="display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;font-weight:800;${medal ? `background:${medal};color:#fff` : 'background:var(--soft)'}">${rank}</span></td>
-        <td>${esc(cn(o.s))}</td><td><strong>${esc(o.s.name)}</strong></td><td class="r num" style="font-size:16px"><strong>${K.f(o)}</strong></td>
-        <td class="r num muted">${rk.kind === 'gain' ? fmt(o.first) + '→' + fmt(o.best) : '伸び −' + o.gain.toFixed(1) + '秒'}</td><td class="r">${o.n}回</td></tr>`; }).join('');
-    const avg = list.length ? mean(list.map(o => o.best)) : null;
-    return `<div class="card"><h2>${GL(g)}（${DIST(g)}m）<span class="muted" style="font-weight:400">記録あり ${list.length}人${avg ? '・平均ベスト ' + fmt(avg) : ''}</span></h2>
-      ${rows ? `<div class="tw" style="max-height:none"><table class="t">${rows}</table></div>` : '<div class="empty">該当なし</div>'}</div>`;
-  };
-  // 学年ごとのトップ（各学年の1位）
-  const tops = grades.filter(gr => rk.scope.endsWith('全体') ? (rk.scope === '中学全体' ? gr.startsWith('中') : gr.startsWith('高')) : gr === rk.scope).map(gr => {
-    const sub = R.filter(s => s.grade === gr).map(summarize).filter(o => o.n);
-    const top = g => { const l = sub.filter(o => o.s.gender === g).sort((a, b) => K.asc ? K.v(a) - K.v(b) : K.v(b) - K.v(a))[0]; return l ? `<strong>${esc(l.s.name)}</strong> <span class="num">${K.f(l)}</span><div class="muted">${esc(cn(l.s))}</div>` : '<span class="muted">—</span>'; };
-    return `<tr><td><strong>${esc(gr)}</strong></td><td>${top('M')}</td><td>${top('F')}</td></tr>`;
-  }).join('');
-  return `<div class="card"><div class="row"><h2 style="margin:0">ランキング</h2><span class="sp"></span><button class="btn sm" onclick="window.print()">印刷</button></div>
-    <div class="row" style="margin-top:12px"><div class="seg">${scopes.map(sc => `<button data-act="rkSet" data-k="scope" data-v="${esc(sc)}" class="${rk.scope === sc ? 'on' : ''}">${esc(sc)}</button>`).join('')}</div></div>
-    <div class="row" style="margin-top:10px"><div class="seg">${[['best', '自己ベスト'], ['gain', '伸び率'], ['latest', '最新の記録']].map(([k, l]) => `<button data-act="rkSet" data-k="kind" data-v="${k}" class="${rk.kind === k ? 'on' : ''}">${l}</button>`).join('')}</div>
-      <div class="seg">${[[10, 'トップ10'], [20, 'トップ20'], [0, '全員']].map(([k, l]) => `<button data-act="rkSet" data-k="n" data-v="${k}" class="${rk.n === k ? 'on' : ''}">${l}</button>`).join('')}</div></div></div>
-  ${tops ? `<div class="card"><h2>学年ごとの1位（${K.l}）</h2><div class="tw" style="max-height:none"><table class="t"><tr><th>学年</th><th>男子 1500m</th><th>女子 1000m</th></tr>${tops}</table></div></div>` : ''}
-  <div class="grid g2">${table('M')}${table('F')}</div>`;
-}
-ACT.rkSet = d => { S.rk[d.k] = d.k === 'n' ? Number(d.v) : d.v; render(); };
-
-/* ================= 教員：分析 ================= */
-function vTAna() {
-  const list = students().map(summarize).filter(o => o.n);
-  const emails = new Set(list.map(o => o.s.email));
-  const recs = S.boot.all.records.filter(r => emails.has(r.email) && r.time);
-  if (!list.length) return `<div class="card">${filterBar()}</div><div class="empty">記録がまだありません</div>`;
-  // 分布（得点）
-  const dist = g => { const pts = scoreRows(g).map(r => r.points).sort((a, b) => a - b); const sub = list.filter(o => o.s.gender === g); return pts.map(p => ({ label: p + '点', value: sub.filter(o => o.score === p).length, color: g === 'F' ? '#d0567a' : '#13315c' })); };
-  // 組別
-  const cls = {}; list.forEach(o => { const k = o.s.grade + '-' + o.s.cls; (cls[k] = cls[k] || []).push(o); });
-  const clsRows = Object.entries(cls).sort((a, b) => cmpJa(a[0], b[0])).map(([k, a]) => {
-    const m = a.filter(o => o.s.gender === 'M'), f = a.filter(o => o.s.gender === 'F');
-    return `<tr><td>${cls2(k)}</td><td class="r">${a.length}</td><td class="r num">${m.length ? fmt(mean(m.map(o => o.best))) : '—'}</td><td class="r num">${f.length ? fmt(mean(f.map(o => o.best))) : '—'}</td><td class="r num">${mean(a.map(o => o.score)).toFixed(1)}</td><td class="r num">${mean(a.map(o => o.gainPct)).toFixed(1)}%</td><td class="r">${Math.round(mean(a.map(o => o.refl)) * 100)}%</td></tr>`;
-  }).join('');
-  // 要因（個人内の偏差で全体を見る）
-  const means = {}; list.forEach(o => means[o.s.email] = mean(o.rs.map(r => r.time)));
-  const gOf = {}; list.forEach(o => gOf[o.s.email] = o.s.gender);
-  const idxOf = {}; list.forEach(o => o.rs.forEach((r, i) => idxOf[r.id] = i));
-  const factorRows = FACTORS.filter(f => f.type === 'num' || f.type === 'pace' || f.type === 'bool').map(f => {
-    const pts = recs.map(r => ({ x: f.type === 'bool' ? (r.breakfast == null ? null : (r.breakfast ? 1 : 0)) : factorValue(r, f.key, gOf[r.email], idxOf[r.id]), y: (r.time / means[r.email] - 1) * 100 })).filter(p => p.x != null);
-    const rr = corr(pts.map(p => p.x), pts.map(p => p.y));
-    return { f, n: pts.length, r: rr };
-  });
-  const fsel = S.tFactor || 'pacing'; const ff = FACTORS.find(f => f.key === fsel);
-  const fpts = recs.map(r => ({ x: factorValue(r, fsel, gOf[r.email], idxOf[r.id]), y: (r.time / means[r.email] - 1) * 100, label: (S.boot.all.roster.find(s => s.email === r.email) || {}).name })).filter(p => p.x != null && p.x !== '' && typeof p.x === 'number');
-  // ペース配分
-  const pg = {}; recs.forEach(r => { const pc = pacing(r, gOf[r.email]); if (pc) (pg[pc.type] = pg[pc.type] || []).push((r.time / means[r.email] - 1) * 100); });
-  const paceItems = ['前半飛ばし', 'イーブンペース', '後半ペースアップ'].filter(k => pg[k]).map(k => ({ label: k, value: mean(pg[k]), vlabel: (mean(pg[k]) > 0 ? '+' : '') + mean(pg[k]).toFixed(1) + '%（' + pg[k].length + '）', color: k === '前半飛ばし' ? '#f26a21' : k === '後半ペースアップ' ? '#1a9a6c' : '#13315c' }));
-  const top = list.slice().sort((a, b) => b.gainPct - a.gainPct).slice(0, 8);
-  const barW = r => r == null ? '' : `<div class="bar" style="width:120px;display:inline-block;vertical-align:middle"><i style="width:${Math.min(100, Math.abs(r) * 100)}%;background:${r < 0 ? 'var(--green)' : 'var(--orange)'}"></i></div>`;
-  return `<div class="card">${filterBar()}</div>
-  <div class="grid g2">
-    <div class="card"><h2>得点分布（男子）</h2>${dist('M').some(i => i.value) ? bars(dist('M'), { fv: v => Math.round(v), h: 210 }) : '<div class="empty">該当なし</div>'}</div>
-    <div class="card"><h2>得点分布（女子）</h2>${dist('F').some(i => i.value) ? bars(dist('F'), { fv: v => Math.round(v), h: 210 }) : '<div class="empty">該当なし</div>'}</div>
+CHG.selNum = t => { const inp = t.parentNode.querySelector('input'); if (t.value === 'other') { inp.style.display = ''; inp.value = ''; inp.focus(); } else { inp.style.display = 'none'; inp.value = t.value; } };
+function courseFields() {
+  const st = S.boot.settings, g = S.boot.profile ? S.boot.profile.gender : '';
+  const myDist = g ? DIST(g) : '';
+  return `<div class="fgrid" style="margin-top:12px">
+    <label class="f">走る距離${selOrNum('dist', DIST_OPTS, myDist, 'm', '性別で決める（男子1500m・女子1000m）')}</label>
+    <label class="f">1周の距離（ラップを取る間隔）${selOrNum('lap', LAP_OPTS, st.lap, 'm')}</label>
   </div>
-  <div class="card"><h2>クラス別の比較</h2><div class="tw"><table class="t"><tr><th>クラス</th><th class="r">人数</th><th class="r">男子 平均ベスト</th><th class="r">女子 平均ベスト</th><th class="r">平均得点</th><th class="r">平均伸び率</th><th class="r">振り返り率</th></tr>${clsRows}</table></div></div>
-  <div class="card"><h2>ペース配分・練習回数と記録の関係（学年全体の探究データ）</h2>
-    <p class="muted" style="margin-top:0">一人ひとりの「自分の平均タイムより何％速かったか」で比べています（体力差の影響を除くため）。緑＝その値が大きいほど速い、オレンジ＝大きいほど遅い。</p>
-    <div class="tw" style="max-height:none"><table class="t"><tr><th>要因</th><th class="r">データ数</th><th class="r">相関 r</th><th>強さ</th><th>読み取り</th></tr>
-    ${factorRows.map(x => `<tr class="click" data-act="tFactor" data-k="${x.f.key}"><td>${x.f.label}</td><td class="r">${x.n}</td><td class="r num">${x.r == null ? '—' : x.r.toFixed(2)}</td><td>${barW(x.r)}</td><td>${x.r == null ? '' : rText(x.r) + (Math.abs(x.r) >= .2 ? (x.r < 0 ? '（大きいほど速い）' : '（大きいほど遅い）') : '')}</td></tr>`).join('')}</table></div>
-    <h3>散布図：${esc(ff.label)}<span class="muted">（表の行をクリックで切替）</span></h3>
-    ${scatter(fpts, { invert: true, xLabel: ff.label + (ff.unit ? '（' + ff.unit + '）' : ''), fy: v => (v > 0 ? '+' : '') + v.toFixed(0) + '%', fx: ff.type === 'pace' ? (v => v.toFixed(2)) : (v => r1(v)), r: 4, op: .45 })}
-    <div class="muted">縦軸：自分の平均タイムとの差（上ほど速い）。授業で全体の傾向を共有すると、生徒の仮説づくりの材料になります。</div></div>
-  <div class="grid g2">
-    <div class="card"><h2>ペース配分と記録</h2>${bars(paceItems, { fv: v => (v > 0 ? '+' : '') + v.toFixed(1) + '%', min: Math.min(0, ...paceItems.map(i => i.value)) - .5, showV: true })}<div class="muted">自分の平均との差（マイナスほど速い）。（ ）は回数。</div></div>
-    <div class="card"><h2>伸び率トップ</h2><table class="t">${top.map((o, i) => `<tr class="click" data-act="stu" data-e="${esc(o.s.email)}"><td>${i + 1}</td><td>${o.s.grade}-${o.s.cls}-${o.s.no} ${esc(o.s.name)}</td><td class="r num">${fmt(o.first)} → <strong>${fmt(o.best)}</strong></td><td class="r" style="color:var(--green);font-weight:700">−${o.gainPct.toFixed(1)}%</td></tr>`).join('')}</table></div>
-  </div>`;
+  <div class="muted" style="margin-top:6px">1周の距離で割り切れないときは、最初の周が短くなります（例：1500m・1周400m → 300m＋400m×3）。</div>`;
 }
-ACT.tFactor = d => { S.tFactor = d.k; render(); };
-
-/* ================= 教員：採点 ================= */
-function vTScore() {
-  const ed = S.scoreEd || (S.scoreEd = { rows: S.boot.scoreTable.map(r => Object.assign({}, r)), basis: S.boot.settings.basis });
-  const col = g => {
-    const rows = ed.rows.map((r, i) => Object.assign({ i }, r)).filter(r => r.gender === g).sort((a, b) => b.points - a.points);
-    const list = S.boot.all.roster.filter(s => s.gender === g).map(summarize).filter(o => o.n);
-    return `<div class="card"><h2>${GL(g)}（${DIST(g)}m）</h2>
-      <table class="t"><tr><th>点数</th><th>この時間以内（分:秒）</th><th class="r">該当人数</th><th></th></tr>
-      ${rows.map(r => { const cnt = list.filter(o => scoreFor2(ed.rows, g, basisTime(o.rs)) === r.points).length; return `<tr><td><input type="number" style="width:70px" value="${r.points}" data-act-change="scE" data-i="${r.i}" data-k="points"></td>
-        <td><input type="text" style="width:110px" value="${r.limit >= 5999 ? '' : fmt(r.limit)}" placeholder="それより遅い" data-act-change="scE" data-i="${r.i}" data-k="limit"></td><td class="r">${cnt}人</td><td><button class="btn sm dang" data-act="scDel" data-i="${r.i}">×</button></td></tr>`; }).join('')}</table>
-      <div class="row" style="margin-top:8px"><button class="btn sm" data-act="scAdd" data-g="${g}">＋ 行を追加</button></div></div>`;
-  };
-  return `<div class="card"><h2>学校オリジナルの採点基準</h2>
-    <p class="muted" style="margin-top:0">新体力テストの得点表とは別に、学校独自の基準を設定できます。上から順に「この時間以内なら○点」で判定し、最後の行（空欄）は「それより遅い」場合の点数です。</p>
-    <div class="row"><label class="f">採点に使う記録<select data-act-change="scBasis"><option value="best" ${ed.basis === 'best' ? 'selected' : ''}>自己ベスト</option><option value="latest" ${ed.basis === 'latest' ? 'selected' : ''}>最新の記録</option></select></label><span class="sp"></span><button class="btn" data-act="scReset">元に戻す</button><button class="btn pri" data-act="scSave">保存して反映</button></div></div>
-  <div class="grid g2">${col('M')}${col('F')}</div>`;
-}
-function scoreFor2(rows, g, t) { if (t == null) return null; const rs = rows.filter(r => r.gender === g).sort((a, b) => a.limit - b.limit); for (const r of rs) if (t <= r.limit) return r.points; return rs.length ? Math.min(...rs.map(r => r.points)) : null; }
-CHG.scE = t => { const r = S.scoreEd.rows[Number(t.dataset.i)]; if (t.dataset.k === 'points') r.points = Number(t.value); else { const v = parseTime(t.value); r.limit = v && v > 0 ? v : 5999; } render(); };
-CHG.scBasis = t => { S.scoreEd.basis = t.value; render(); };
-ACT.scAdd = d => { S.scoreEd.rows.push({ gender: d.g, points: 0, limit: 600 }); render(); };
-ACT.scDel = d => { S.scoreEd.rows.splice(Number(d.i), 1); render(); };
-ACT.scReset = () => { S.scoreEd = null; render(); };
-ACT.scSave = (d, b) => {
-  b.disabled = true;
-  api('saveScoreTable', S.scoreEd.rows, S.scoreEd.basis).then(res => { S.boot.scoreTable = res.scoreTable; S.boot.settings = res.settings; S.scoreEd = null; toast('採点基準を保存しました'); render(); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
-};
-
-/* ================= 教員：設定 ================= */
-function vTSet() {
-  const s = S.boot.settings;
-  return `<div class="card" id="setf"><h2>設定</h2>
-    <label class="f">アプリ名<input type="text" data-f="title" value="${esc(s.title)}"></label>
-    <label class="f" style="margin-top:10px">教員として扱うメール（カンマ区切り）<textarea data-f="teachers" placeholder="teacher1@sakuragaoka.ac.jp, teacher2@...">${esc(s.teachers || '')}</textarea></label>
-    <div class="fgrid" style="margin-top:10px">
-      <label class="f">男子ラップ（m・合計1500）<input type="text" data-f="lapM" value="${lapStr(s.lapM)}"></label>
-      <label class="f">女子ラップ（m・合計1000）<input type="text" data-f="lapF" value="${lapStr(s.lapF)}"></label>
+/* ================= 友達の記録を測る ================= */
+const FRIENDS_KEY = 'jikyuso-kiroku-friends';
+function recentFriends() { try { return JSON.parse(localStorage.getItem(FRIENDS_KEY) || '[]'); } catch (e) { return []; } }
+function vFriend() {
+  const fr = recentFriends(), p = S.boot.profile;
+  return `<div class="card" id="ff"><div class="row"><h2 style="margin:0">iPadを忘れた友達の記録を測る</h2><span class="sp"></span><button class="btn sm" data-act="friendBack">戻る</button></div>
+    <p class="muted">走る友達の情報を入れてください。測った記録は「記録・振り返り」の<strong>あずかり中の記録</strong>に入り、あとでAirDropなどで友達のiPadに送れます。</p>
+    ${fr.length ? `<div class="muted" style="margin-bottom:6px">前に測った友達</div><div class="runners" style="margin-bottom:14px">${fr.map((x, i) => `<button data-act="friendPick" data-i="${i}"><strong>${esc(x.grade)} ${esc(x.cls)}組${x.no}番</strong> ${esc(x.name)}<br><span class="muted">${GL(x.gender)} ${DIST(x.gender)}m</span></button>`).join('')}</div>` : ''}
+    <div class="fgrid">
+      <label class="f">学年<select data-f="grade">${GRADES.map(g => `<option ${g === p.grade ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+      <label class="f">組<input type="text" data-f="cls" value="${esc(p.cls)}" maxlength="5"></label>
+      <label class="f">番号<input type="number" data-f="no" min="1" max="60" inputmode="numeric" placeholder="例 12"></label>
     </div>
-    <p class="muted">1周の距離をカンマ区切りで入れます。「100x15」のようにまとめて書くこともできます（1周100mのコースで1500m＝100x15、1000m＝100x10）。1周400mのトラックなら 300,400,400,400。</p>
-    <div class="row"><span class="sp"></span><button class="btn pri" data-act="setSave">保存</button></div></div>
-  <div class="card"><h2>名簿について</h2><p class="muted" style="margin:0">生徒は最初にアプリを開いたとき、学年・組・番号・氏名・性別を自分で入力して登録します（その人のGoogleアカウントが「名簿」シートの行にひも付きます）。入力ミスはスプレッドシートの「名簿」シートで直接直せます。行ごと削除すると、その生徒はもう一度登録し直せます。先生が先に名簿（email欄は空）を入れておくと、同じ学年・組・番号で登録したときにその行が使われます。</p></div>`;
+    <div class="fgrid" style="margin-top:12px">
+      <label class="f">氏名<input type="text" data-f="name" maxlength="30" placeholder="例 桜丘 花子"></label>
+      <label class="f">性別（走る距離）<select data-f="gender"><option value="">選んでください</option><option value="M">男子（${DIST('M')}m）</option><option value="F">女子（${DIST('F')}m）</option></select></label>
+    </div>
+    <div class="row" style="margin-top:14px"><span class="sp"></span><button class="btn acc" data-act="friendGo">この友達の計測をはじめる</button></div></div>
+    <div class="card"><h2>計測のしかた</h2>
+      <div class="step"><b>1</b><div>スタートの合図で <strong>スタート</strong> をタップ</div></div>
+      <div class="step"><b>2</b><div>走る人が決められた地点を通るたびに <strong>ラップ</strong> をタップ</div></div>
+      <div class="step"><b>3</b><div>最後の周は <strong>ゴール</strong>。押し間違えたら「1つ戻す」</div></div></div>`;
 }
-const lapStr = a => a.length && a.every(x => x === a[0]) ? `${a[0]}x${a.length}` : a.join(',');
-ACT.setSave = (d, b) => {
-  const f = { basis: S.boot.settings.basis }; $$('#setf [data-f]').forEach(i => f[i.dataset.f] = i.value);
-  b.disabled = true;
-  api('saveSettings', f).then(s => { S.boot.settings = s; toast('保存しました'); render(); }).catch(e => { b.disabled = false; toast(errMsg(e), 1); });
+function setRunner(x) {
+  S.sw.runner = Object.assign({ email: 'friend:' + x.grade + '-' + x.cls + '-' + x.no }, x);
+  S.sw.state = 'idle'; S.sw.splits = []; S.sw.partial = false; render();
+}
+ACT.friendPick = d => setRunner(recentFriends()[Number(d.i)]);
+ACT.friendGo = () => {
+  const f = {}; $$('#ff [data-f]').forEach(i => f[i.dataset.f] = i.value.trim());
+  f.cls = normCls(f.cls); f.no = normNo(f.no); f.name = f.name.replace(/[\s　]+/g, ' ');
+  if (!f.cls) return toast('組を入力してください', 1);
+  if (!(f.no >= 1 && f.no <= 60 && Number.isInteger(f.no))) return toast('番号は1〜60の数字で入力してください', 1);
+  if (!f.name) return toast('氏名を入力してください', 1);
+  if (!f.gender) return toast('性別を選んでください', 1);
+  const fr = recentFriends().filter(x => !(x.grade === f.grade && x.cls === f.cls && x.no === f.no)); fr.unshift(f);
+  try { localStorage.setItem(FRIENDS_KEY, JSON.stringify(fr.slice(0, 8))); } catch (e) { }
+  setRunner(f);
 };
 
-/* ================= デモ用データ（Apps Script外で開いたときだけ使う） ================= */
-const Mock = (() => {
-  let seed = 20261120; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const pick = a => a[Math.floor(rnd() * a.length)];
-  const ME = 'demo.student@sakuragaoka.ac.jp', TE = 'demo.teacher@sakuragaoka.ac.jp';
-  let role = 'student';
-  const db = {
-    settings: { title: '持久走ラボ', teachers: TE, lapM: Array(15).fill(100), lapF: Array(10).fill(100), basis: 'best' },
-    score: [], roster: [], records: [], hyps: []
-  };
-  [[10, 300], [9, 320], [8, 340], [7, 360], [6, 380], [5, 400], [4, 420], [3, 450], [2, 480], [1, 5999]].forEach(p => db.score.push({ gender: 'M', points: p[0], limit: p[1] }));
-  [[10, 215], [9, 230], [8, 245], [7, 260], [6, 275], [5, 290], [4, 305], [3, 325], [2, 345], [1, 5999]].forEach(p => db.score.push({ gender: 'F', points: p[0], limit: p[1] }));
-  const fam = ['佐藤', '鈴木', '高橋', '田中', '伊藤', '渡辺', '山本', '中村', '小林', '加藤', '吉田', '山田', '佐々木', '山口', '松本', '井上', '木村', '林', '清水', '山崎', '森', '池田', '橋本', '阿部', '石川', '前田', '藤田', '小川', '岡田', '後藤', '長谷川', '村上'];
-  const mn = ['陽翔', '蓮', '湊', '悠真', '大和', '颯太', '律', '樹', '蒼', '朝陽', '結翔', '海斗', '奏太', '陸', '隼', '航'];
-  const fn = ['陽葵', '凛', '結菜', '芽依', '紬', '葵', '澪', '心春', '美桜', '結衣', '咲良', '莉子', '杏', '彩花', '花音', '柚月'];
-  db.roster.push({ email: ME, grade: '高2', cls: '1', no: 1, name: '桜丘 太郎', gender: 'M' });
-  let fi = 0;
-  [['高2', '1'], ['高2', '2'], ['高2', '3'], ['高1', '1'], ['高1', '2'], ['中3', 'A'], ['中2', 'A'], ['中2', 'B']].forEach(([gr, c], ci) => { for (let n = (ci === 0 ? 2 : 1); n <= 16; n++) {
-    const g = rnd() < .5 ? 'M' : 'F';
-    db.roster.push({ email: `s${ci}${String(n).padStart(2, '0')}@sakuragaoka.ac.jp`, grade: gr, cls: c, no: n, name: fam[fi++ % fam.length] + ' ' + (g === 'M' ? pick(mn) : pick(fn)), gender: g });
-  } });
-  const dates = ['2026-10-20', '2026-10-27', '2026-11-04', '2026-11-10', '2026-11-17'];
-  const refl = ['前半を抑えたら最後まで粘れた', '2周目で落ちた。次は入りを少しゆっくりにする', '寝不足で体が重かった', 'ペアの声かけで最後上げられた', '前の人について行ったら後半きつかった', 'ウォームアップを長めにしたら1周目が楽だった'];
-  let id = 1;
-  db.roster.forEach(s => {
-    const me = s.email === ME;
-    const jr = s.grade.startsWith('中') ? 1.06 : 1;
-    const base = (s.gender === 'M' ? (me ? 378 : 320 + rnd() * 130) : 238 + rnd() * 100) * (me ? 1 : jr);
-    dates.forEach((d, i) => {
-      if (!me && rnd() < .08) return;
-      const sleep = Math.round((5 + rnd() * 3.5) * 2) / 2, bf = rnd() > .2, cond = 1 + Math.floor(rnd() * 5), warm = pick([5, 10, 10, 15]), weekly = Math.floor(rnd() * 6) * 30, st = pick(STRATEGIES);
-      const front = st === '前半から積極的に' || st === '前の人について行く';
-      let t = base * (1 - .016 * i) * (1 - (sleep - 7) * .013) * (bf ? 1 : 1.025) * (1 - (cond - 3) * .008) * (1 - (warm - 10) * .0015) * (1 - weekly / 150 * .01) * (front ? 1.014 : st === '前半は抑えて後半上げる' ? .992 : 1) * (1 + (rnd() - .5) * .03);
-      const p = s.gender === 'F' ? db.settings.lapF : db.settings.lapM;
-      const k = front ? .16 : st === '前半は抑えて後半上げる' ? -.06 : .05;
-      const w = p.map((dd, j) => dd * (1 + k * (j / (p.length - 1) - .5) + (rnd() - .5) * .03) * (j === 0 ? .96 : 1));
-      const sw = w.reduce((a, b) => a + b, 0); const laps = w.map(x => r1(t * x / sw)); t = r1(laps.reduce((a, b) => a + b, 0));
-      const filled = me ? i < 4 : rnd() < .7;
-      db.records.push({ id: 'r' + (id++), created: d + ' 10:' + pad2(10 + i), date: d, email: s.email, name: s.name, recorder: s.email, distance: DIST(s.gender), time: t, laps,
-        sleep: filled ? sleep : null, breakfast: filled ? bf : null, condition: filled ? cond : null, warmup: filled ? warm : null, weekly: filled ? weekly : null, rpe: filled ? 5 + Math.floor(rnd() * 5) : null,
-        strategy: filled ? st : '', reflection: filled ? pick(refl) : '', comment: '', method: 'ペア計測' });
-    });
-    if (me) db.hyps.push({ id: 'h1', created: '2026-10-27 12:00', email: ME, factor: 'order', hypothesis: '持久走を毎週くり返せば、体が慣れて記録が少しずつ伸びるだろう', reason: '1回目と2回目で6秒縮んだから', method: '回数とタイムの関係をグラフで見る', conclusion: '仮説は正しそう', discussion: '回数を重ねるごとに記録が伸びた。ただ、伸び方は一定ではなくペース配分を変えた回に大きく伸びたので、回数だけが理由ではなさそう。', updated: '' });
-    if (me) db.hyps.push({ id: 'h2', created: '2026-11-05 12:00', email: ME, factor: 'pacing', hypothesis: '前半を抑えて後半に上げれば、後半に失速せず記録が伸びるだろう', reason: '1回目は1周目で飛ばして3周目に大きく落ちたから', method: 'ラップを毎回測り、後半÷前半の比とタイムを比べる', conclusion: '仮説は正しそう', discussion: '後半÷前半が1.0に近い回ほどタイムが良かった。最初の300mを抑える意識が一番効果があった。', updated: '' });
-    if (me) db.hyps.push({ id: 'hs', created: '2026-11-18 12:00', email: ME, factor: '__summary', hypothesis: '記録が伸びた一番の理由はペース配分だった。回数を重ねた効果もあるが、1周目を抑えた回に大きく伸びた。', reason: '', method: '', conclusion: '', discussion: '部活の練習でも最初を抑えて一定ペースを意識する。', updated: '' });
-    if (me) db.hyps.push({ id: 'hr', created: '2026-11-18 12:00', email: ME, factor: '__recsum', hypothesis: '最初は1周目で飛ばして後半に大きく失速していたが、毎回の感想で「入りをゆっくり」と書き続けたことで、一定ペースで走れるようになり45秒縮めることができた。今後の課題は、ラスト1周でもう一段ペースを上げられるようにすること。', reason: '', method: '', conclusion: '', discussion: '', updated: '' });
-    if (!me && rnd() < .5) db.hyps.push({ id: 'h' + (id++), created: '2026-10-28 12:00', email: s.email, factor: pick(['pacing', 'warmup', 'breakfast', 'strategy']), hypothesis: '前半を抑えて一定ペースで走れば、後半に落ちずに記録が伸びるだろう', reason: '', method: '', conclusion: rnd() < .4 ? '仮説は正しそう' : '', discussion: '', updated: '' });
+/* ================= ファイルで送る・受け取る ================= */
+async function shareJSON(obj, name) {
+  const text = JSON.stringify(obj);
+  const file = new File([text], name, { type: 'application/json' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: name }); return true; }
+  } catch (e) { if (e && e.name === 'AbortError') return false; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  return true;
+}
+function pickFile() {
+  return new Promise(res => {
+    const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json,application/json,text/plain';
+    inp.onchange = () => { const f = inp.files[0]; if (!f) return res(null); const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = () => res(null); r.readAsText(f); };
+    inp.click();
   });
-  const meEmail = () => role === 'teacher' ? TE : role === 'new' ? 'new.student@sakuragaoka.ac.jp' : ME;
-  const prof = () => db.roster.find(r => r.email === meEmail()) || null;
-  const clone = x => JSON.parse(JSON.stringify(x));
+}
+const pName = x => `${x.grade}-${x.cls}-${x.no}_${String(x.name).replace(/\s/g, '')}`;
+
+function heldCard() {
+  const H = S.boot.held || [];
+  if (!H.length) return '';
+  return `<div class="card" style="border:2px solid var(--orange)"><h2>あずかり中の記録（友達の代わりに測った記録）</h2>
+    <p class="muted" style="margin-top:0">「送る」を押すとAirDropなどで送れます。友達は自分のiPadの「記録・振り返り」→「友達から届いた記録を読み込む」で取り込みます。送り終わったら削除してOKです。</p>
+    ${H.map(r => `<div class="row" style="border-top:1px solid var(--line);padding:10px 0"><div><strong>${esc(r.runner.grade)} ${esc(r.runner.cls)}組${r.runner.no}番 ${esc(r.name)}</strong><br><span class="muted">${md(r.date)}　<strong class="num" style="color:var(--ink);font-size:16px">${fmt(r.time, 1)}</strong>${r.laps.length ? '　ラップ ' + r.laps.map(l => l.toFixed(1)).join(' / ') : ''}</span></div><span class="sp"></span>
+      <button class="btn acc sm" data-act="heldSend" data-id="${r.id}">送る</button><button class="btn sm dang" data-act="heldDel" data-id="${r.id}">削除</button></div>`).join('')}</div>`;
+}
+ACT.heldSend = async d => {
+  const r = S.boot.held.find(x => x.id === d.id); if (!r) return;
+  const ok = await shareJSON({ app: 'jikyuso-kiroku', type: 'record', to: r.runner, records: [Object.assign({}, r, { runner: undefined })] }, `持久走記録_${pName(r.runner)}_${r.date}.json`);
+  if (ok) toast('送る準備ができました。送れたら「削除」してください');
+};
+ACT.heldDel = d => {
+  if (!confirm('このあずかり中の記録を削除しますか？（友達に送ったあとなら削除してOKです）')) return;
+  api('deleteHeld', d.id).then(() => { S.boot.held = S.boot.held.filter(x => x.id !== d.id); render(); toast('削除しました'); });
+};
+ACT.importOpen = async () => {
+  const text = await pickFile(); if (text == null) return;
+  let o; try { o = JSON.parse(text); } catch (e) { return toast('このファイルは読み込めません', 1); }
+  if (!o || o.app !== 'jikyuso-kiroku') return toast('持久走記録のファイルではありません', 1);
+  if (o.type === 'backup') return toast('これはバックアップのファイルです。「登録情報・バックアップ」から戻してください', 1);
+  const p = S.boot.profile, to = o.to || {};
+  if (to.name && (to.name.replace(/\s/g, '') !== p.name.replace(/\s/g, '') || String(to.no) !== String(p.no)) &&
+    !confirm(`このファイルは「${to.grade} ${to.cls}組${to.no}番 ${to.name}」さんあての記録です。\nあなたの記録として読み込みますか？`)) return;
+  api('importRecords', o.records || []).then(n => { S.boot = Store.getBootstrap(); toast(n ? `${n}件の記録を読み込みました。感想を書いておこう` : 'すでに読み込み済みの記録です'); S.tab = 'recs'; render(); })
+    .catch(e => toast(errMsg(e), 1));
+};
+
+/* ================= バックアップ ================= */
+function backupCard() {
+  const n = S.boot.myRecords.length;
+  return `<div class="card" style="max-width:640px;margin:0 auto 20px"><h2>バックアップ</h2>
+    <p class="muted" style="margin-top:0">記録はこのiPadのブラウザの中にだけ保存されています。iPadの初期化・履歴の消去などで消えることがあるので、ときどきバックアップを保存しておこう（記録 ${n}件）。</p>
+    <div class="row"><button class="btn pri" data-act="backupSave">バックアップを保存</button><button class="btn" data-act="backupLoad">バックアップから戻す</button></div>
+    ${S.boot.lastBackup ? `<p class="muted" style="margin-bottom:0">前回のバックアップ：${esc(S.boot.lastBackup)}</p>` : ''}</div>`;
+}
+ACT.backupSave = async () => {
+  const ok = await shareJSON(Object.assign({ app: 'jikyuso-kiroku', type: 'backup', saved: today() }, Store.raw()), `持久走記録_バックアップ_${pName(S.boot.profile)}_${today()}.json`);
+  if (ok) { Store.markBackup(); S.boot = Store.getBootstrap(); render(); toast('バックアップを保存しました'); }
+};
+ACT.backupLoad = async () => {
+  const text = await pickFile(); if (text == null) return;
+  let o; try { o = JSON.parse(text); } catch (e) { return toast('このファイルは読み込めません', 1); }
+  if (!o || o.app !== 'jikyuso-kiroku' || o.type !== 'backup') return toast('持久走記録のバックアップファイルではありません', 1);
+  if (!confirm(`${o.profile ? o.profile.name + 'さんの' : ''}バックアップ（${o.saved || ''}・記録${(o.records || []).length}件）で、このiPadの内容を置きかえます。よろしいですか？`)) return;
+  try { Store.restore(o); S.boot = Store.getBootstrap(); S.tab = 'home'; render(); toast('バックアップから戻しました'); } catch (e) { toast(errMsg(e), 1); }
+};
+
+/* ================= ホームの注意 ================= */
+function homeNote() {
+  const standalone = window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (standalone) return '';
+  return `<div class="note b" style="margin-bottom:14px"><strong>このページを「ホーム画面に追加」しよう。</strong> Safariの共有ボタン → 「ホーム画面に追加」。ホーム画面から開くと、記録が消えにくくなります。</div>`;
+}
+
+/* ================= 保存（このiPadのブラウザ内） ================= */
+const Store = (() => {
+  const KEY = 'jikyuso-kiroku-v1';
+  const blank = () => ({ profile: null, distM: 0, distF: 0, lap: 0, records: [], held: [], lastBackup: '' });
+  let mem = null;
+  const load = () => {
+    if (mem) return mem;
+    try { mem = Object.assign(blank(), JSON.parse(localStorage.getItem(KEY) || 'null') || {}); }
+    catch (e) { mem = blank(); }
+    return mem;
+  };
+  const save = () => {
+    try { localStorage.setItem(KEY, JSON.stringify(mem)); }
+    catch (e) { throw new Error('このiPadに保存できませんでした。プライベートブラウズを使っていないか確認してください。'); }
+  };
+  try { navigator.storage && navigator.storage.persist && navigator.storage.persist(); } catch (e) { }
+  const qp = (() => { try { return new URLSearchParams(location.search); } catch (e) { return new URLSearchParams(''); } })();
+  const qn = (k, lo, hi) => { const v = Number(qp.get(k)); return v >= lo && v <= hi ? v : 0; };
+  const URL_SET = { distM: qn('m', 200, 10000), distF: qn('f', 200, 10000), lap: qn('lap', 50, 10000) || ({ '200': 200, '400': 400 }[qp.get('course')] || 0) };
+  const cfg = () => { const d = load(); return { distM: d.distM || URL_SET.distM || 1500, distF: d.distF || URL_SET.distF || 1000, lap: d.lap || URL_SET.lap || 100 }; };
+  const nowStr = () => { const d = new Date(); return today() + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()); };
+  const newId = () => 'r' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36);
+  const cleanRec = r => ({ id: String(r.id || newId()), created: String(r.created || nowStr()), date: /^\d{4}-\d{2}-\d{2}$/.test(r.date) ? r.date : today(), email: 'me',
+    name: String(r.name || ''), distance: Number(r.distance) || 0, time: r1(Number(r.time)), laps: (Array.isArray(r.laps) ? r.laps : []).map(Number).filter(n => n > 0).map(r1),
+    lapDists: (Array.isArray(r.lapDists) ? r.lapDists : []).map(Number).filter(n => n > 0), reflection: String(r.reflection || '').slice(0, 2000), method: String(r.method || '手入力'), recorder: String(r.recorder || ''), recorderName: String(r.recorderName || '') });
   const api = {
-    setRole(r) { role = r; },
     getBootstrap() {
-      const t = role === 'teacher', e = meEmail(), p = prof();
-      const res = { email: e, teacher: t, profile: p, settings: Object.assign({}, db.settings, t ? {} : { teachers: undefined }), scoreTable: t ? db.score : [],
-        myRecords: db.records.filter(r => r.email === e), myHypotheses: db.hyps.filter(h => h.email === e),
-        runners: t ? db.roster : db.roster.filter(r => p && r.grade === p.grade) };
-      if (t) res.all = { roster: db.roster, records: db.records, hypotheses: db.hyps };
-      return clone(res);
+      const d = load(), c = cfg();
+      const profile = d.profile ? Object.assign({ email: 'me', summary: '' }, d.profile) : null;
+      return { email: 'me', profile, settings: { title: '持久走記録', distM: c.distM, distF: c.distF, lap: c.lap, lapM: buildLaps(c.distM, c.lap), lapF: buildLaps(c.distF, c.lap) },
+        myRecords: d.records, held: d.held, lastBackup: d.lastBackup, runners: profile ? [profile] : [] };
     },
-    registerProfile(p) {
-      const e = meEmail(); if (!db.roster.some(r => r.email === e)) db.roster.push({ email: e, grade: p.grade, cls: String(p.cls), no: Number(p.no), name: p.name, gender: p.gender === 'F' ? 'F' : 'M' });
-      return api.getBootstrap();
+    saveProfile(f) {
+      const d = load();
+      d.profile = { grade: f.grade, cls: f.cls, no: f.no, name: f.name, gender: f.gender, summary: d.profile ? d.profile.summary || '' : '' };
+      if (f.gender === 'F') d.distF = f.dist || 0; else d.distM = f.dist || 0;
+      if (f.lap) d.lap = f.lap;
+      d.records.forEach(r => r.name = f.name);
+      save(); return api.getBootstrap();
     },
     saveRecord(p) {
-      const s = db.roster.find(r => r.email === p.runner); if (!s) throw new Error('走った人が名簿に見つかりません');
+      const d = load(), me = d.profile;
+      if (!me) throw new Error('先に登録してください');
       if (!(p.time > 60 && p.time < 3600)) throw new Error('タイムが正しくありません');
-      const now = new Date(); const rec = { id: 'r' + (id++), created: today() + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes()), date: p.date || today(), email: s.email, name: s.name, recorder: meEmail(), distance: DIST(s.gender), time: r1(p.time), laps: (p.laps || []).map(r1),
-        sleep: null, breakfast: null, condition: null, warmup: null, weekly: null, rpe: null, strategy: '', reflection: '', comment: '', method: p.method || 'ペア計測' };
-      db.records.push(rec); return rec;
+      const self = p.runner === 'me';
+      const run = self ? me : p.runner;
+      const c = cfg(), dist = run.gender === 'F' ? c.distF : c.distM;
+      const rec = cleanRec({ id: newId(), created: nowStr(), date: p.date, name: run.name, distance: dist, lapDists: buildLaps(dist, c.lap), time: p.time, laps: p.laps || [], method: p.method, recorder: self ? '' : 'me', recorderName: self ? '' : me.name });
+      if (self) d.records.push(rec);
+      else { rec.email = run.email; rec.runner = { grade: run.grade, cls: run.cls, no: run.no, name: run.name, gender: run.gender }; d.held.push(rec); }
+      save(); return rec;
     },
-    updateRecord(rid, f) { const r = db.records.find(x => x.id === rid); Object.keys(f).forEach(k => { if (k in r) r[k] = f[k]; }); return r; },
-    deleteRecord(rid) { db.records = db.records.filter(x => x.id !== rid); return true; },
-    saveHypothesis(h) {
-      if (h.id) { const x = db.hyps.find(y => y.id === h.id); Object.assign(x, h); return x; }
-      const n = Object.assign({ id: 'h' + (id++), created: today() + ' 12:00', email: meEmail(), conclusion: '', discussion: '' }, h); db.hyps.push(n); return n;
+    updateRecord(id, f) { const d = load(), r = d.records.find(x => x.id === id); if (!r) throw new Error('記録が見つかりません'); r.reflection = String(f.reflection || '').slice(0, 2000); save(); return r; },
+    deleteRecord(id) { const d = load(); d.records = d.records.filter(x => x.id !== id); save(); return true; },
+    deleteHeld(id) { const d = load(); d.held = d.held.filter(x => x.id !== id); save(); return true; },
+    saveSummary(t) { const d = load(); d.profile.summary = String(t || '').slice(0, 2000); save(); return d.profile.summary; },
+    importRecords(list) {
+      const d = load(); let n = 0;
+      (list || []).forEach(x => {
+        if (!(Number(x.time) > 60 && Number(x.time) < 3600)) return;
+        if (d.records.some(r => r.id === String(x.id))) return;
+        const r = cleanRec(x); r.name = d.profile.name; r.method = r.method === '手入力' ? '手入力' : '代理計測'; r.recorder = r.recorderName ? 'friend' : ''; d.records.push(r); n++;
+      });
+      save(); return n;
     },
-    deleteHypothesis(hid) { db.hyps = db.hyps.filter(h => h.id !== hid); return true; },
-    saveSettings(s) { const sum = a => a.reduce((x, y) => x + y, 0); const ex = str => String(str).split(/[,、\s]+/).filter(Boolean).flatMap(t => { const m = t.match(/^(\d+)\s*[x×*]\s*(\d+)$/i); return m ? Array(Number(m[2])).fill(Number(m[1])) : [Number(t)]; }).filter(n => n > 0);
-      const lm = ex(s.lapM), lf = ex(s.lapF);
-      if (sum(lm) !== 1500) throw new Error('男子ラップの合計が1500mになっていません'); if (sum(lf) !== 1000) throw new Error('女子ラップの合計が1000mになっていません');
-      Object.assign(db.settings, { title: s.title, teachers: s.teachers, lapM: lm, lapF: lf }); return db.settings; },
-    saveScoreTable(rows, basis) { db.score = rows.map(r => ({ gender: r.gender, points: Number(r.points), limit: Number(r.limit) })); if (basis) db.settings.basis = basis; return { scoreTable: db.score, settings: db.settings }; }
+    raw() { const d = load(); return { profile: d.profile, distM: d.distM, distF: d.distF, lap: d.lap, records: d.records, held: d.held }; },
+    markBackup() { load().lastBackup = nowStr(); save(); },
+    restore(o) {
+      if (!o.profile || !Array.isArray(o.records)) throw new Error('バックアップの中身が正しくありません');
+      mem = Object.assign(blank(), { profile: o.profile, distM: Number(o.distM) || 0, distF: Number(o.distF) || 0, lap: Number(o.lap) || 0, records: o.records.map(cleanRec), held: Array.isArray(o.held) ? o.held : [], lastBackup: '' });
+      save();
+    }
   };
   return api;
 })();
 
-if (!IS_GAS) {
-  const bar = $('#demobar'); bar.hidden = false;
-  bar.innerHTML = '<strong>デモ表示</strong><span>サンプルデータで動いています（保存はされません）</span><span style="flex:1"></span><button data-act="demo" data-r="new">初回登録</button><button data-act="demo" data-r="student" class="on">生徒の画面</button><button data-act="demo" data-r="teacher">教員の画面</button>';
-  ACT.demo = (d) => { if (S.sw && S.sw.state === 'run') swReset(); Mock.setRole(d.r); $$('#demobar button').forEach(b => b.classList.toggle('on', b.dataset.r === d.r)); S.tab = null; S.sw = null; S.pick.cls = ''; S.scoreEd = null; boot(); };
-}
 boot();
+
 </script>
 </body>
 </html>
